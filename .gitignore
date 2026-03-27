@@ -1,0 +1,133 @@
+# Dependencies
+node_modules/
+package-lock.json
+yarn.lock
+pnpm-lock.yaml
+
+# Environment variables
+.env
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+
+# Build outputs
+dist/
+build/
+out/
+.next/
+
+# Contract artifacts
+contracts/artifacts/
+contracts/cache/
+contracts/typechain-types/
+contracts/coverage/
+contracts/coverage.json
+
+# Hardhat
+contracts/.openzeppelin/
+
+# Backend build
+backend/dist/
+backend/build/
+
+# Logs
+logs/
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+lerna-debug.log*
+.pnpm-debug.log*
+
+# OS files
+.DS_Store
+Thumbs.db
+*.swp
+*.swo
+*~
+
+# IDE
+.vscode/
+.idea/
+*.sublime-project
+*.sublime-workspace
+.project
+.classpath
+.c9/
+*.launch
+.settings/
+
+# Testing
+.nyc_output/
+coverage/
+*.lcov
+.hypothesis/
+.pytest_cache/
+
+# Temporary files
+tmp/
+temp/
+*.tmp
+*.bak
+*.cache
+
+# TypeScript
+*.tsbuildinfo
+tsconfig.tsbuildinfo
+
+# Miscellaneous
+.eslintcache
+.stylelintcache
+.cache/
+
+# Local development
+*.local
+
+# Database
+*.db
+*.sqlite
+*.sqlite3
+
+# Contract deployment artifacts
+contracts/deployments/
+contracts/broadcast/
+
+# Secrets and keys
+*.pem
+*.key
+secrets/
+.secret
+
+# Backup files
+*.old
+backup/
+
+# Documentation build
+docs/_build/
+docs/.doctrees/
+
+# Markdown policy: track only README files and implementation journey doc
+*.md
+!README.md
+!**/README.md
+!**/README*.md
+!IMPLEMENTATION_JOURNEY_AND_RUNBOOK.md
+
+# macOS
+.AppleDouble
+.LSOverride
+Icon
+._*
+
+# Windows
+ehthumbs.db
+ehthumbs_vista.db
+Desktop.ini
+$RECYCLE.BIN/
+
+# Linux
+.fuse_hidden*
+.directory
+.Trash-*
+.nfs*
