@@ -1,0 +1,51 @@
+{
+  "name": "shieldvault-contracts",
+  "version": "1.0.0",
+  "description": "ShieldVault fhEVM Smart Contracts",
+  "main": "index.js",
+  "scripts": {
+    "compile": "hardhat compile",
+    "test": "hardhat test",
+    "deploy:local": "hardhat run scripts/deploy.ts --network localfhevm",
+    "deploy:devnet": "hardhat run scripts/deploy.ts --network zama",
+    "deploy-flow-evm": "hardhat run scripts/deployFlowEVM.ts --network flowEvmTestnet",
+    "deploy-flow-evm-mainnet": "hardhat run scripts/deployFlowEVM.ts --network flowEvmMainnet",
+    "deploy-cadence": "npx ts-node scripts/deployCadence.ts",
+    "verify-setup": "npx ts-node scripts/verifySetup.ts",
+    "verify-flow-evm": "hardhat verify --network flowEvmTestnet",
+    "create-test-duel": "hardhat run scripts/createTestDuel.ts --network flowEvmTestnet",
+    "test-create-join-flow": "hardhat run scripts/testCreateJoinFlow.ts --network flowEvmTestnet",
+    "test-1min-duel": "hardhat run scripts/test1MinDuel.ts --network flowEvmTestnet",
+    "test-on-chain-duel": "hardhat run scripts/testOnChainDuel.ts --network flowEvmTestnet",
+    "deploy-on-chain": "hardhat run scripts/deployOnChain.ts --network flowEvmTestnet",
+    "deploy-zama-encrypted": "hardhat run scripts/deployZamaEncrypted.ts --network zama"
+  },
+  "keywords": [
+    "fhEVM",
+    "Zama",
+    "privacy",
+    "DeFi"
+  ],
+  "author": "",
+  "license": "MIT",
+  "devDependencies": {
+    "@nomicfoundation/hardhat-toolbox": "^4.0.0",
+    "@typechain/ethers-v6": "^0.5.1",
+    "@typechain/hardhat": "^9.1.0",
+    "@types/chai": "^4.3.11",
+    "@types/mocha": "^10.0.6",
+    "@types/node": "^20.10.6",
+    "chai": "^4.4.0",
+    "hardhat": "^2.19.4",
+    "ts-node": "^10.9.2",
+    "typechain": "^8.3.2",
+    "typescript": "^5.3.3"
+  },
+  "dependencies": {
+    "@openzeppelin/contracts": "^5.0.1",
+    "@pythnetwork/pyth-sdk-solidity": "^2.4.1",
+    "dotenv": "^16.3.1",
+    "ethers": "^6.10.0",
+    "fhevm": "^0.5.0"
+  }
+}
