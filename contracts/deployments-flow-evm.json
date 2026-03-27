@@ -1,0 +1,8 @@
+{
+  "network": "flow-evm-testnet",
+  "chainId": "545",
+  "duelFactory": "0x181Ee4a77935f1Ca2EB5E40d34ED1C39f0FF603a",
+  "assetRegistry": "0xd9bcd9b1A4d4b351F3f1961C2A17DC9917167C43",
+  "deployer": "0x509849Da53330510825D2E20555362B29a8a4100",
+  "timestamp": "2026-03-27T15:38:51.945Z"
+}
