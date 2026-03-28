@@ -314,6 +314,25 @@ ShieldVault - Core Duel Lifecycle
   ... (more tests)
 ```
 
+### Strict On-Chain Duel Demo (Flow EVM)
+
+```bash
+cd contracts
+npm run test-on-chain-duel
+```
+
+The strict on-chain demo prints:
+- transaction proofs for each duel stage (tx hash, block, gas, explorer link)
+- on-chain Pyth start/end snapshots and per-asset change percentages
+- precise settlement values in micro-bps and converted bps
+
+Example final output fields:
+```
+Creator Return (Precise): 2373185 micro-bps
+Opponent Return (Precise): 1305746 micro-bps
+Precise Delta (Creator - Opponent): 1.067439 bps
+```
+
 ### Local Development
 
 1. **Start local fhEVM node** (if using local setup):
