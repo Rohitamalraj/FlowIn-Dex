@@ -34,9 +34,9 @@ export class EventIndexer {
     const rpcUrl = process.env.FLOW_EVM_RPC_URL || process.env.ZAMA_RPC_URL || 'https://testnet.evm.nodes.onflow.org';
     this.provider = new ethers.JsonRpcProvider(rpcUrl);
 
-    const factoryAddress = process.env.FLOW_EVM_FACTORY || process.env.DUEL_FACTORY_ADDRESS;
+    const factoryAddress = process.env.FLOW_EVM_DUEL_FACTORY;
     if (!factoryAddress) {
-      throw new Error('FLOW_EVM_FACTORY (or DUEL_FACTORY_ADDRESS) not set in environment');
+      throw new Error('FLOW_EVM_DUEL_FACTORY not set in environment');
     }
 
     this.duelFactoryContract = new ethers.Contract(

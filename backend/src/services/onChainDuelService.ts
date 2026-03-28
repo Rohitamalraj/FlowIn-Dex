@@ -347,7 +347,10 @@ export function initializeOnChainDuelService(rpcUrl: string, factoryAddress: str
 export function getOnChainDuelService(): OnChainDuelService {
   if (!instance) {
     const rpcUrl = process.env.FLOW_EVM_RPC_URL || "https://testnet.evm.nodes.onflow.org";
-    const factoryAddress = process.env.FLOW_EVM_DUEL_FACTORY || "0x72b205E87BD02BdBF0182EeF000aDD110D627c3E";
+    const factoryAddress = process.env.FLOW_EVM_DUEL_FACTORY;
+    if (!factoryAddress) {
+      throw new Error("Set FLOW_EVM_DUEL_FACTORY in backend/.env");
+    }
     const privateKey = process.env.FLOW_EVM_PRIVATE_KEY;
 
     instance = new OnChainDuelService(rpcUrl, factoryAddress, privateKey);
