@@ -37,6 +37,8 @@ const config: HardhatUserConfig = {
       accounts: process.env.FLOW_EVM_PRIVATE_KEY ? [process.env.FLOW_EVM_PRIVATE_KEY] : [],
       chainId: 545,
       gasPrice: 16038000000,  // Updated to minimum network requirement
+      httpTimeout: 60000,     // Increase timeout to 60 seconds for slow networks
+      timeout: 60000,         // Transaction confirmation timeout
     },
     flowEvmMainnet: {
       url: process.env.FLOW_EVM_MAINNET_RPC || "https://mainnet.evm.nodes.onflow.org",
