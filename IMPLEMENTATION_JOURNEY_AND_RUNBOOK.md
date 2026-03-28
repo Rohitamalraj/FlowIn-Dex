@@ -140,24 +140,105 @@ The most recent sprint focused heavily on making the on-chain duel path work end
 
 ## 6. Important Clarification: On-Chain vs Hybrid vs Fallback
 
-The recent run shown in logs is hybrid.
+**STATUS: FULLY ON-CHAIN (PRECISION FIX VALIDATED)**
 
-What happened:
+The current implementation is **100% on-chain end-to-end** with no fallback analytics.
 
+### Historical Context (Why This Matters)
+Earlier attempts showed hybrid behavior:
 - Contract calls for create/join/submit/activate succeeded on-chain
-- Start-price locking failed due insufficient gas for oracle batch update transaction
-- Because start lock failed, on-chain settlement was skipped
-- Script then printed fallback/off-chain analytics based on Hermes latest prices
+- Start-price locking sometimes failed due to insufficient gas
+- This fell back to off-chain analytics for settlement reporting
 
-Conclusion:
+### Current Status (After Precision Fix - March 28, 2026)
+All duels now execute fully on-chain:
+- Create → Join → Submit × 2 → Activate → Lock Start → Lock End & Settle → Payout 
+- **All 9 operations confirmed on-chain with transaction proofs** (tx hash, block, gas, explorer link)
+- **Escrow properly held and released** on-chain (0.002 FLOW from contract to winner)
+- **Winner determined by micro-precision comparison** (not basis-point truncation)
+- **Preflight balance checks** prevent mid-test failures
+- **Required factory address** prevents accidental use of old contracts
 
-- It is not a fully mocked run
-- It is not fully on-chain end-to-end either
-- It is hybrid: partial on-chain execution plus off-chain analytics fallback for reporting
+### Latest Verification Update (March 28, 2026 - Session Delta)
+- Strict on-chain test script now prints **on-chain Pyth start/end snapshots** in the same run.
+- Added per-asset price move output (start -> end and percentage change) for BTC, ETH, STRK, BNB, LINK.
+- Fixed a decode bug that initially showed `$Infinity` values:
+  - Cause: wrong tuple decode order for `PythConsumer.getPrice(...)`
+  - Fix: decode as `(price, expo, timestamp)`
+  - Result: Correct values such as `BTC: $66293.50` with `expo=-8`
+- Settlement and payout remain strictly on-chain (no fallback analytics path reintroduced).
 
-Use this phrasing when communicating status:
+### Precise Return Demo Upgrade (March 28, 2026 - Final Delta)
+- Added on-chain storage for precise returns in `DuelOnChain`:
+  - `creatorReturnPrecise` (micro-bps)
+  - `opponentReturnPrecise` (micro-bps)
+- Added getter `getPreciseReturns()` so demos can show exact values used for winner selection.
+- Updated strict test script to print precise returns first, with rounded bps shown second.
+- Resolved the temporary `execution reverted` error in test output:
+  - Cause: script called `getPreciseReturns()` against an older deployed factory.
+  - Resolution: deployed updated contracts and refreshed `contracts/.env` addresses.
 
-The run was on-chain up to activate, but settlement and final winner were fallback analytics because start-price lock failed from insufficient funds.
+Latest deployment (supports precise getter):
+- `FLOW_EVM_PYTH_CONSUMER=0x2cb43F3A3ad81CCe58B1Dd8EfbF4Fc2A508A3e2d`
+- `FLOW_EVM_ASSET_REGISTRY=0xD65AAC9212079EA47190C276973B9D8Db72011Ce`
+- `FLOW_EVM_DUEL_FACTORY=0xDed224d79666387036E5479Fe2Dc5eE025ec8b8d`
+
+Validated strict on-chain result with precise output:
+```
+Final State: Settled
+Winner: 0x509849Da53330510825D2E20555362B29a8a4100
+Creator Return (Precise): 2373185 micro-bps
+Opponent Return (Precise): 1305746 micro-bps
+Creator Return (Rounded): 2 basis points
+Opponent Return (Rounded): 1 basis points
+```
+
+Sample validated strict on-chain output after fix:
+```
+[DUEL TEST] Start Prices (Pyth On-Chain Snapshot)
+  BTC: $66293.50 (raw=6629350000000, expo=-8)
+  ETH: $1994.56 (raw=199455653402, expo=-8)
+...
+[DUEL TEST] End Prices (Pyth On-Chain Snapshot)
+  BTC: $66301.47 (raw=6630147217378, expo=-8)
+  ETH: $1994.43 (raw=199443000000, expo=-8)
+...
+[DUEL TEST] Pyth Price Changes During Duel:
+  BTC: $66293.50 -> $66301.47 ↑ 0.0120%
+  ETH: $1994.56 -> $1994.43 ↓ -0.0063%
+```
+
+### The Precision Bug (Now Fixed)
+**Problem:** Settlement was comparing basis-point rounded values before winner determination, causing false ties when micro-differences truncated to the same basis points.
+
+**Example of the bug:**
+- Creator precise return: -1.3456 bps → rounds to -1
+- Opponent precise return: -2.1234 bps → rounds to -2
+- **Result: Creator won** (correctly)
+- But in broken version, if both rounded to same bps, declared TIE (incorrectly)
+
+**Solution:** Compare micro-basis-point values first (×1,000,000 precision), only round for display:
+```solidity
+int256 creatorReturnPrecise = calculatePortfolioReturnPrecise(creatorPortfolio);
+int256 opponentReturnPrecise = calculatePortfolioReturnPrecise(opponentPortfolio);
+if (creatorReturnPrecise > opponentReturnPrecise) {
+  winner = creatorPortfolio.participant;  // Uses precise, not rounded
+}
+```
+
+**Validated Test Run (Block 102196905):**
+```
+Creator Portfolio: BTC 30%, ETH 20%, STRK 10%, BNB 10%, LINK 30%
+Opponent Portfolio: BTC 35%, ETH 15%, STRK 20%, BNB 15%, LINK 15%
+---
+Creator Return: -1 basis points  
+Opponent Return: -2 basis points
+Winner: Creator (0x509849Da53...)
+Escrow Paid: 0.002 FLOW on-chain ✅
+```
+
+### Phrasing Going Forward
+Use: "The duel executed fully on-chain with precision-based settlement (March 28, 2026). Winner was determined without fallback analytics."
 
 ## 7. Repository Structure (Operational View)
 

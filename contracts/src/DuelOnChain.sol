@@ -15,6 +15,7 @@ contract DuelOnChain is Ownable {
 
     // Constants
     uint32 public constant WEIGHT_PRECISION = 10000; // Basis points (100.00%)
+    uint256 public constant RETURN_PRECISION = 1_000_000; // micro-bps precision for winner comparison
     uint32 public constant TIER_1_REQUIRED = 5000;   // 50% for Tier 1
     uint32 public constant TIER_2_REQUIRED = 5000;   // 50% for Tier 2
 
@@ -69,6 +70,8 @@ contract DuelOnChain is Ownable {
     address public winner;
     int256 public creatorReturn;     // Return in basis points
     int256 public opponentReturn;    // Return in basis points
+    int256 public creatorReturnPrecise;  // Return in micro-bps (1 bps = 1_000_000)
+    int256 public opponentReturnPrecise; // Return in micro-bps (1 bps = 1_000_000)
     bool public settled;
 
     // Events
@@ -319,14 +322,18 @@ contract DuelOnChain is Ownable {
 
         state = DuelState.Settling;
 
-        // Calculate returns for both portfolios
-        creatorReturn = calculatePortfolioReturn(creatorPortfolio);
-        opponentReturn = calculatePortfolioReturn(opponentPortfolio);
+        // Calculate precise returns for winner comparison to avoid false ties from integer truncation
+        creatorReturnPrecise = calculatePortfolioReturnPrecise(creatorPortfolio);
+        opponentReturnPrecise = calculatePortfolioReturnPrecise(opponentPortfolio);
+
+        // Expose rounded basis points in public state for readability/API compatibility
+        creatorReturn = roundPreciseReturnToBps(creatorReturnPrecise);
+        opponentReturn = roundPreciseReturnToBps(opponentReturnPrecise);
 
         // Determine winner
-        if (creatorReturn > opponentReturn) {
+        if (creatorReturnPrecise > opponentReturnPrecise) {
             winner = creatorPortfolio.participant;
-        } else if (opponentReturn > creatorReturn) {
+        } else if (opponentReturnPrecise > creatorReturnPrecise) {
             winner = opponentPortfolio.participant;
         } else {
             // Tie - split winnings
@@ -347,12 +354,12 @@ contract DuelOnChain is Ownable {
     /**
      * @notice Calculate portfolio return in basis points
      * @param portfolio Portfolio to calculate return for
-     * @return returnBps Return in basis points
+        * @return preciseReturnBps Return in micro-bps precision
      */
-    function calculatePortfolioReturn(Portfolio storage portfolio)
+    function calculatePortfolioReturnPrecise(Portfolio storage portfolio)
         internal
         view
-        returns (int256 returnBps)
+        returns (int256 preciseReturnBps)
     {
         int256 totalReturn = 0;
 
@@ -362,8 +369,11 @@ contract DuelOnChain is Ownable {
 
             require(startPrice > 0 && endPrice > 0, "DuelOnChain: invalid prices");
 
-            // Calculate asset return: (endPrice - startPrice) / startPrice * 10000
-            int256 assetReturn = ((int256(endPrice) - int256(startPrice)) * 10000) / int256(startPrice);
+            // Calculate asset return with micro-bps precision:
+            // (endPrice - startPrice) / startPrice * 10000 * RETURN_PRECISION
+            int256 assetReturn =
+                ((int256(endPrice) - int256(startPrice)) * int256(uint256(WEIGHT_PRECISION)) * int256(RETURN_PRECISION)) /
+                int256(startPrice);
             
             // Weight the return - convert uint32 weight to int256
             uint32 weightValue = portfolio.weights[i];
@@ -372,6 +382,19 @@ contract DuelOnChain is Ownable {
         }
 
         return totalReturn;
+    }
+
+    /**
+     * @notice Convert precise micro-bps return to rounded basis points
+     */
+    function roundPreciseReturnToBps(int256 preciseReturn) internal pure returns (int256) {
+        int256 scale = int256(RETURN_PRECISION);
+
+        if (preciseReturn >= 0) {
+            return (preciseReturn + (scale / 2)) / scale;
+        }
+
+        return (preciseReturn - (scale / 2)) / scale;
     }
 
     /**
@@ -470,6 +493,15 @@ contract DuelOnChain is Ownable {
             creatorReturn,
             opponentReturn
         );
+    }
+
+    /**
+     * @notice Get precise returns used for winner comparison
+     * @return _creatorReturnPrecise Creator return in micro-bps
+     * @return _opponentReturnPrecise Opponent return in micro-bps
+     */
+    function getPreciseReturns() external view returns (int256 _creatorReturnPrecise, int256 _opponentReturnPrecise) {
+        return (creatorReturnPrecise, opponentReturnPrecise);
     }
 }
 

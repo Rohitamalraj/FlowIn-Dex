@@ -1,50 +1,85 @@
 import { ethers } from "hardhat";
 
-type PriceMap = Record<string, number>;
+const EXPLORER_TX_BASE =
+  process.env.FLOW_EVM_EXPLORER_TX_BASE || "https://evm-testnet.flowscan.io/tx/";
 
-async function fetchHermesLatestPrices(symbolToPriceId: Record<string, string>): Promise<PriceMap> {
-  const symbols = Object.keys(symbolToPriceId);
-  const params = symbols
-    .map((symbol) => `ids[]=${encodeURIComponent(symbolToPriceId[symbol])}`)
-    .join("&");
-  const url = `https://hermes.pyth.network/api/latest_price_feeds?${params}`;
-
-  const response = await fetch(url);
-  if (!response.ok) {
-    throw new Error(`Failed to fetch Hermes latest prices: ${response.status} ${response.statusText}`);
-  }
-
-  const feeds = await response.json();
-  if (!Array.isArray(feeds) || feeds.length !== symbols.length) {
-    throw new Error("Unexpected Hermes response when fetching latest prices");
-  }
-
-  const prices: PriceMap = {};
-  for (let i = 0; i < symbols.length; i++) {
-    const price = Number(feeds[i]?.price?.price);
-    const expo = Number(feeds[i]?.price?.expo);
-    prices[symbols[i]] = price * Math.pow(10, expo);
-  }
-
-  return prices;
+function fmtFlow(value: bigint): string {
+  return `${ethers.formatEther(value)} FLOW`;
 }
 
-function calculatePortfolioReturnFromPrices(
-  weightsBySymbol: Record<string, number>,
-  startPrices: PriceMap,
-  endPrices: PriceMap
-): number {
-  let totalReturn = 0;
-  for (const [symbol, weight] of Object.entries(weightsBySymbol)) {
-    const start = startPrices[symbol];
-    const end = endPrices[symbol];
-    if (start === undefined || end === undefined || start <= 0) {
-      throw new Error(`Missing/invalid price for ${symbol}`);
-    }
-    const assetReturn = (end - start) / start;
-    totalReturn += (weight / 100) * assetReturn;
+function pythPriceToNumber(price: bigint, expo: number): number {
+  return Number(price) * Math.pow(10, expo);
+}
+
+function formatUsd(price: number): string {
+  return `$${price.toFixed(price >= 1 ? 2 : 6)}`;
+}
+
+type PriceSnapshot = {
+  symbol: string;
+  rawPrice: bigint;
+  expo: number;
+  price: number;
+};
+
+async function readPythSnapshot(
+  pythConsumer: any,
+  priceIds: string[],
+  symbols: string[]
+): Promise<PriceSnapshot[]> {
+  const snapshot: PriceSnapshot[] = [];
+
+  for (let i = 0; i < priceIds.length; i++) {
+    const [price, expo] = await pythConsumer.getPrice(priceIds[i]);
+    const rawPrice = BigInt(price.toString());
+    const expoNum = Number(expo);
+    snapshot.push({
+      symbol: symbols[i],
+      rawPrice,
+      expo: expoNum,
+      price: pythPriceToNumber(rawPrice, expoNum),
+    });
   }
-  return totalReturn;
+
+  return snapshot;
+}
+
+function printPriceSnapshot(title: string, snapshot: PriceSnapshot[]) {
+  console.log(`\n[DUEL TEST] ${title}`);
+  for (const item of snapshot) {
+    console.log(`  ${item.symbol}: ${formatUsd(item.price)} (raw=${item.rawPrice.toString()}, expo=${item.expo})`);
+  }
+}
+
+function printPriceDelta(startSnapshot: PriceSnapshot[], endSnapshot: PriceSnapshot[]) {
+  console.log("\n[DUEL TEST] Pyth Price Changes During Duel:");
+  for (let i = 0; i < startSnapshot.length; i++) {
+    const start = startSnapshot[i];
+    const end = endSnapshot[i];
+    const pctChange = start.price !== 0 ? ((end.price - start.price) / start.price) * 100 : 0;
+    const arrow = pctChange > 0 ? "↑" : pctChange < 0 ? "↓" : "→";
+    console.log(
+      `  ${start.symbol}: ${formatUsd(start.price)} -> ${formatUsd(end.price)} ${arrow} ${pctChange.toFixed(4)}%`
+    );
+  }
+}
+
+async function waitAndLogTx(tx: any, label: string) {
+  console.log(`⏳ ${label} submitted`);
+  console.log(`   Tx Hash: ${tx.hash}`);
+  if (EXPLORER_TX_BASE) {
+    console.log(`   Proof URL: ${EXPLORER_TX_BASE}${tx.hash}`);
+  }
+
+  const receipt = await tx.wait();
+  if (!receipt || receipt.status !== 1) {
+    throw new Error(`${label} failed on-chain`);
+  }
+
+  console.log(`✅ ${label} confirmed`);
+  console.log(`   Block: ${receipt.blockNumber}`);
+  console.log(`   Gas Used: ${receipt.gasUsed.toString()}`);
+  return receipt;
 }
 
 async function fetchPythUpdateData(priceIds: string[]): Promise<string[]> {
@@ -85,7 +120,7 @@ async function primePythPrices(
   const pythConsumerAddress = duelConfig[6];
 
   const PythConsumer = await ethers.getContractFactory("PythConsumer");
-  const pythConsumer = PythConsumer.attach(pythConsumerAddress).connect(updater);
+  const pythConsumer: any = PythConsumer.attach(pythConsumerAddress).connect(updater);
 
   const pythAddress = await pythConsumer.pyth();
   const pythAbi = ["function getUpdateFee(bytes[] calldata updateData) view returns (uint256)"];
@@ -100,22 +135,17 @@ async function primePythPrices(
     console.log("⚠️ Could not read Pyth update fee from oracle; using fallback fee");
   }
 
-  try {
-    const tx = await pythConsumer.updatePricesBatch(priceIds, updateData, {
-      value: feeWithBuffer,
-    });
-    await tx.wait();
-  } catch (error: any) {
-    throw new Error(
-      `Failed to batch update Pyth prices. Check oracle address and Hermes payload compatibility. Original error: ${error?.message || error}`
-    );
-  }
-
-  console.log(`✅ ${label}: Pyth prices refreshed on-chain`);
+  const tx = await pythConsumer.updatePricesBatch(priceIds, updateData, {
+    value: feeWithBuffer,
+  });
+  await waitAndLogTx(tx, `${label}: Pyth batch update`);
+  console.log(`✅ ${label}: Pyth prices refreshed on-chain with fee ${fmtFlow(feeWithBuffer)}`);
 }
 
 async function main() {
   const [creator] = await ethers.getSigners();
+  let startSnapshot: PriceSnapshot[] = [];
+  let endSnapshot: PriceSnapshot[] = [];
 
   console.log("Testing On-Chain Duel via Smart Contract Calls...\n");
   console.log("Creator:", creator.address);
@@ -128,10 +158,17 @@ async function main() {
 
   console.log("Opponent:", opponent.address);
 
+  const minCreatorBalance = ethers.parseEther(process.env.MIN_CREATOR_BALANCE_FLOW || "0.03");
+  const minOpponentBalance = ethers.parseEther(process.env.MIN_OPPONENT_BALANCE_FLOW || "0.02");
+  const opponentFundingAmount = ethers.parseEther(process.env.OPPONENT_FUND_FLOW || "0.08");
+
   // Contract addresses from deployment
-  const DUEL_FACTORY =
-    process.env.FLOW_EVM_DUEL_FACTORY ||
-    "0x72b205E87BD02BdBF0182EeF000aDD110D627c3E";
+  const DUEL_FACTORY = process.env.FLOW_EVM_DUEL_FACTORY;
+  if (!DUEL_FACTORY) {
+    throw new Error(
+      "FLOW_EVM_DUEL_FACTORY is not set. Run deploy-on-chain and update contracts/.env with the latest factory address."
+    );
+  }
   const PYTH_PRICE_IDS = {
     BTC: "0xe62df6c8b4a85fe1a67db44dc12de5db330f7ac66b72dc658afedf0f4a415b43",
     ETH: "0xff61491a931112ddf1bd8147cd1b641375f79f5825126d665480874634fd0ace",
@@ -164,31 +201,6 @@ async function main() {
 
   const entryAmount = ethers.parseEther("0.001");
   const duration = 60; // 1 minute
-  const creatorPortfolioWeights: Record<string, number> = {
-    BTC: 30,
-    ETH: 20,
-    STRK: 10,
-    BNB: 10,
-    LINK: 30,
-  };
-  const opponentPortfolioWeights: Record<string, number> = {
-    BTC: 35,
-    ETH: 15,
-    STRK: 20,
-    BNB: 15,
-    LINK: 15,
-  };
-
-  const symbolToPriceId = {
-    BTC: PYTH_PRICE_IDS.BTC,
-    ETH: PYTH_PRICE_IDS.ETH,
-    STRK: PYTH_PRICE_IDS.STRK,
-    BNB: PYTH_PRICE_IDS.BNB,
-    LINK: PYTH_PRICE_IDS.LINK,
-  };
-
-  let startPrices: PriceMap = {};
-  let endPrices: PriceMap = {};
 
   // Connect to deployed factory using on-chain ABI signature
   const factoryAbi = [
@@ -203,11 +215,26 @@ async function main() {
   console.log("╚════════════════════════════════════════════════════════╝\n");
 
   try {
-    const fundTx = await creator.sendTransaction({
-      to: opponent.address,
-      value: ethers.parseEther("0.01"),
-    });
-    await fundTx.wait();
+    const creatorBalanceBefore = await provider.getBalance(creator.address);
+    const opponentBalanceBefore = await provider.getBalance(opponent.address);
+
+    console.log("\nPreflight Balances:");
+    console.log(`   Creator:  ${fmtFlow(creatorBalanceBefore)}`);
+    console.log(`   Opponent: ${fmtFlow(opponentBalanceBefore)}`);
+
+    if (creatorBalanceBefore < minCreatorBalance) {
+      throw new Error(
+        `Creator balance too low for strict on-chain run. Need at least ${fmtFlow(minCreatorBalance)}.`
+      );
+    }
+
+    if (opponentBalanceBefore < minOpponentBalance) {
+      const fundTx = await creator.sendTransaction({
+        to: opponent.address,
+        value: opponentFundingAmount,
+      });
+      await waitAndLogTx(fundTx, "Fund opponent wallet");
+    }
 
     const createTx = await factory.createDuel(
       entryAmount,
@@ -219,8 +246,7 @@ async function main() {
       { value: entryAmount }
     );
 
-    console.log("Waiting for duel creation...");
-    const createReceipt = await createTx.wait();
+    const createReceipt = await waitAndLogTx(createTx, "Create duel");
 
     // Parse DuelCreated event
     let duelId: string = "";
@@ -248,20 +274,31 @@ async function main() {
     console.log(`   Entry Amount: ${ethers.formatEther(entryAmount)} FLOW`);
     console.log(`   Duration: ${duration} seconds`);
 
+    const escrowAfterCreate = await provider.getBalance(duelAddress);
+    console.log(`   Escrow After Create: ${fmtFlow(escrowAfterCreate)}`);
+
     // Step 2: Join Duel
     console.log("\n╔════════════════════════════════════════════════════════╗");
     console.log("║ STEP 2: JOIN DUEL                                      ║");
     console.log("╚════════════════════════════════════════════════════════╝\n");
 
     const DuelOnChain = await ethers.getContractFactory("DuelOnChain");
-    const duel = DuelOnChain.attach(duelAddress).connect(opponent);
+    const duel: any = DuelOnChain.attach(duelAddress).connect(opponent);
 
     const joinTx = await duel.joinDuel({ value: entryAmount });
-    await joinTx.wait();
+    await waitAndLogTx(joinTx, "Join duel");
 
     console.log("✅ Opponent Joined:");
     console.log(`   Opponent: ${opponent.address}`);
     console.log(`   Entry Amount: ${ethers.formatEther(entryAmount)} FLOW`);
+
+    const escrowAfterJoin = await provider.getBalance(duelAddress);
+    const expectedEscrow = entryAmount * 2n;
+    console.log(`   Escrow After Join: ${fmtFlow(escrowAfterJoin)}`);
+    console.log(`   Expected Escrow:   ${fmtFlow(expectedEscrow)}`);
+    if (escrowAfterJoin < expectedEscrow) {
+      throw new Error("Escrow funding check failed: duel contract balance is below expected 2x stake");
+    }
 
     // Step 3: Submit Portfolios
     console.log("\n╔════════════════════════════════════════════════════════╗");
@@ -282,7 +319,7 @@ async function main() {
       priceIds as any,
       creatorWeights
     );
-    await creatorSubmitTx.wait();
+    await waitAndLogTx(creatorSubmitTx, "Submit creator portfolio");
     console.log("✅ Creator Portfolio Submitted");
 
     // Opponent portfolio: BTC 35%, ETH 15%, STRK 20%, BNB 15%, LINK 15%
@@ -299,7 +336,7 @@ async function main() {
       priceIds as any,
       opponentWeights
     );
-    await opponentSubmitTx.wait();
+    await waitAndLogTx(opponentSubmitTx, "Submit opponent portfolio");
     console.log("✅ Opponent Portfolio Submitted");
 
     // Step 4: Get Duel Status
@@ -323,28 +360,23 @@ async function main() {
     console.log("╚════════════════════════════════════════════════════════╝\n");
 
     const activateTx = await duel.activateDuel();
-    await activateTx.wait();
+    await waitAndLogTx(activateTx, "Activate duel");
     console.log("✅ Duel Activated (State: Active)");
 
-    console.log("\n[DUEL TEST] === FETCHING START PRICES ===\n");
-    startPrices = await fetchHermesLatestPrices(symbolToPriceId);
-    console.log("[DUEL TEST] ");
-    console.log("Start Prices:");
-    for (const symbol of symbols) {
-      console.log(`  ${symbol}: $${startPrices[symbol].toFixed(2)}`);
-    }
+    const duelConfig = await duel.config();
+    const pythConsumerAddress = duelConfig[6];
+    const pythConsumerAbi = [
+      "function getPrice(bytes32 priceId) external view returns (int64 price, int32 expo, uint256 timestamp)",
+    ];
+    const pythConsumer = new ethers.Contract(pythConsumerAddress, pythConsumerAbi, creator);
 
-    let startPricesLockedOnChain = false;
-    try {
-      await primePythPrices(duel, priceIds, opponent, "Pre-start");
-      const lockStartTx = await duel.connect(creator).lockStartPrices();
-      await lockStartTx.wait();
-      startPricesLockedOnChain = true;
-      console.log("✅ Start Prices Locked For Both Portfolios");
-    } catch (error: any) {
-      console.log(`⚠️ Could not lock start prices on-chain: ${error?.message || error}`);
-      console.log("⚠️ Continuing with market analytics output");
-    }
+    await primePythPrices(duel, priceIds, opponent, "Pre-start");
+    startSnapshot = await readPythSnapshot(pythConsumer, priceIds, symbols);
+    printPriceSnapshot("Start Prices (Pyth On-Chain Snapshot)", startSnapshot);
+
+    const lockStartTx = await duel.connect(creator).lockStartPrices();
+    await waitAndLogTx(lockStartTx, "Lock start prices");
+    console.log("✅ Start Prices Locked For Both Portfolios");
 
     // Step 6: Wait for duel duration
     console.log("\n╔════════════════════════════════════════════════════════╗");
@@ -361,115 +393,72 @@ async function main() {
     console.log("║ STEP 7: LOCK END PRICES & SETTLE                       ║");
     console.log("╚════════════════════════════════════════════════════════╝\n");
 
-    let settledOnChain = false;
-    let finalInfo: any = null;
-    if (startPricesLockedOnChain) {
-      try {
-        await primePythPrices(duel, priceIds, opponent, "Pre-settlement");
+    await primePythPrices(duel, priceIds, opponent, "Pre-settlement");
+    endSnapshot = await readPythSnapshot(pythConsumer, priceIds, symbols);
+    printPriceSnapshot("End Prices (Pyth On-Chain Snapshot)", endSnapshot);
+    printPriceDelta(startSnapshot, endSnapshot);
 
-        const settleTx = await duel.connect(opponent).lockEndPricesAndSettle();
-        await settleTx.wait();
-        const afterSettleInfo = await duel.getDuelInfo();
-        if (afterSettleInfo[6]) {
-          settledOnChain = true;
-          console.log("✅ Duel Settled");
-        } else {
-          console.log("⚠️ Settlement transaction executed but duel is not settled yet");
-        }
-      } catch (error: any) {
-        console.log(`⚠️ Could not complete on-chain settlement: ${error?.message || error}`);
-        console.log("⚠️ Continuing with market analytics output");
-      }
-    } else {
-      console.log("⚠️ Skipping on-chain settlement because start prices were not locked on-chain");
+    const settleTx = await duel.connect(creator).lockEndPricesAndSettle();
+    await waitAndLogTx(settleTx, "Lock end prices and settle");
+    const afterSettleInfo = await duel.getDuelInfo();
+    const settledOnChain = afterSettleInfo[6];
+    if (!settledOnChain) {
+      throw new Error("Settlement transaction executed but duel is not settled");
     }
-
-    console.log("\n[DUEL TEST] === FETCHING END PRICES ===\n");
-    endPrices = await fetchHermesLatestPrices(symbolToPriceId);
-    console.log("[DUEL TEST] ");
-    console.log("End Prices:");
-    for (const symbol of symbols) {
-      const start = startPrices[symbol];
-      const end = endPrices[symbol];
-      const changePct = ((end - start) / start) * 100;
-      const arrow = changePct >= 0 ? "↑" : "↓";
-      console.log(`  ${symbol}: $${end.toFixed(2)} ${arrow} ${Math.abs(changePct).toFixed(2)}%`);
-    }
+    console.log("✅ Duel Settled Fully On-Chain");
 
     // Step 8: Get Final Results
     console.log("\n╔════════════════════════════════════════════════════════╗");
     console.log("║ STEP 8: FINAL RESULTS                                  ║");
     console.log("╚════════════════════════════════════════════════════════╝\n");
 
-    if (settledOnChain) {
-      finalInfo = await duel.getDuelInfo();
-      console.log("Final State:", stateNames[finalInfo[0]]);
-      console.log("Winner:", finalInfo[5] === "0x0000000000000000000000000000000000000000" ? "TIE" : finalInfo[5]);
-      console.log("Creator Return:", finalInfo[7].toString(), "basis points");
-      console.log("Opponent Return:", finalInfo[8].toString(), "basis points");
-    } else {
-      console.log("Final State: ACTIVE (on-chain settlement not completed in this run)");
-      console.log("Winner: N/A");
-      console.log("Creator Return: N/A");
-      console.log("Opponent Return: N/A");
-    }
-
-    console.log("\n[DUEL TEST]\n=== CALCULATING RETURNS ===\n");
-    const user1Return = calculatePortfolioReturnFromPrices(
-      creatorPortfolioWeights,
-      startPrices,
-      endPrices
-    );
-    const user2Return = calculatePortfolioReturnFromPrices(
-      opponentPortfolioWeights,
-      startPrices,
-      endPrices
-    );
-
-    const user1StartValue = 100;
-    const user2StartValue = 100;
-    const user1EndValue = user1StartValue * (1 + user1Return);
-    const user2EndValue = user2StartValue * (1 + user2Return);
-
-    console.log("[DUEL TEST] User1 Portfolio Performance:");
-    console.log(`  Start Value: $${user1StartValue.toFixed(2)}`);
-    console.log(`  End Value:   $${user1EndValue.toFixed(2)}`);
-    console.log(`  Return:      ${(user1Return * 100).toFixed(6)}%\n`);
-
-    console.log("[DUEL TEST] User2 Portfolio Performance:");
-    console.log(`  Start Value: $${user2StartValue.toFixed(2)}`);
-    console.log(`  End Value:   $${user2EndValue.toFixed(2)}`);
-    console.log(`  Return:      ${(user2Return * 100).toFixed(6)}%\n`);
-
-    console.log("[DUEL TEST] ╔════════════════════════════════════════════════════════╗");
-    if (user1Return > user2Return) {
-      console.log("[DUEL TEST] ║ 🏆 USER 1 WINS THE DUEL                               ║");
-      console.log(`║ Outperformance: +${((user1Return - user2Return) * 100).toFixed(4)}%                           ║`);
-    } else if (user2Return > user1Return) {
-      console.log("[DUEL TEST] ║ 🏆 USER 2 WINS THE DUEL                               ║");
-      console.log(`║ Outperformance: +${((user2Return - user1Return) * 100).toFixed(4)}%                           ║`);
-    } else {
-      console.log("[DUEL TEST] ║ 🤝 DUEL RESULT: TIE                                   ║");
-    }
-    console.log("[DUEL TEST] ╚════════════════════════════════════════════════════════╝");
-    console.log("\n[DUEL TEST] TEST COMPLETED SUCCESSFULLY");
+    const finalInfo = await duel.getDuelInfo();
+    const preciseReturns = await duel.getPreciseReturns();
+    console.log("Final State:", stateNames[finalInfo[0]]);
+    console.log("Winner:", finalInfo[5] === "0x0000000000000000000000000000000000000000" ? "TIE" : finalInfo[5]);
+    console.log("Creator Return (Precise):", preciseReturns[0].toString(), "micro-bps");
+    console.log("Opponent Return (Precise):", preciseReturns[1].toString(), "micro-bps");
+    console.log("Creator Return (Rounded):", finalInfo[7].toString(), "basis points");
+    console.log("Opponent Return (Rounded):", finalInfo[8].toString(), "basis points");
 
     // Step 9: Execute Payout
     console.log("\n╔════════════════════════════════════════════════════════╗");
     console.log("║ STEP 9: EXECUTE PAYOUT                                 ║");
     console.log("╚════════════════════════════════════════════════════════╝\n");
 
-    if (settledOnChain && finalInfo && finalInfo[5] !== "0x0000000000000000000000000000000000000000") {
-      const payoutTx = await duel.executePayout();
-      await payoutTx.wait();
-      console.log("✅ Payout Executed");
-      console.log(`   Winner: ${finalInfo[5]}`);
-      console.log(`   Amount: ${ethers.formatEther(entryAmount * 2n)} FLOW`);
-    } else if (settledOnChain && finalInfo) {
-      console.log("TIE: No single winner");
-    } else {
-      console.log("Skipped: On-chain payout (duel not settled on-chain in this run)");
+    const duelEscrowBeforePayout = await provider.getBalance(duelAddress);
+    console.log(`Escrow Balance Before Payout: ${fmtFlow(duelEscrowBeforePayout)}`);
+
+    if (duelEscrowBeforePayout < expectedEscrow) {
+      throw new Error("Escrow balance is lower than expected before payout");
     }
+
+    if (finalInfo[5] !== "0x0000000000000000000000000000000000000000") {
+      const winnerAddress = finalInfo[5];
+      const winnerBalanceBefore = await provider.getBalance(winnerAddress);
+
+      const payoutTx = await duel.executePayout();
+      await waitAndLogTx(payoutTx, "Execute payout to winner");
+
+      const winnerBalanceAfter = await provider.getBalance(winnerAddress);
+      const duelEscrowAfterPayout = await provider.getBalance(duelAddress);
+
+      console.log("✅ Payout Executed On-Chain");
+      console.log(`   Winner: ${winnerAddress}`);
+      console.log(`   Escrow Paid: ${fmtFlow(expectedEscrow)}`);
+      console.log(`   Winner Balance Before: ${fmtFlow(winnerBalanceBefore)}`);
+      console.log(`   Winner Balance After:  ${fmtFlow(winnerBalanceAfter)}`);
+      console.log(`   Escrow Balance After:  ${fmtFlow(duelEscrowAfterPayout)}`);
+    } else {
+      const tiePayoutTx = await duel.splitTieWinnings();
+      await waitAndLogTx(tiePayoutTx, "Split tie winnings");
+      const duelEscrowAfterTie = await provider.getBalance(duelAddress);
+      console.log("✅ Tie payout executed on-chain");
+      console.log(`   Escrow Balance After: ${fmtFlow(duelEscrowAfterTie)}`);
+    }
+
+    console.log("\n[DUEL TEST] STRICT ON-CHAIN FLOW VERIFIED");
+    console.log("[DUEL TEST] Every duel stage produced on-chain transaction proof hashes");
 
     console.log("\n╔════════════════════════════════════════════════════════╗");
     console.log("║ ✅ ON-CHAIN DUEL TEST COMPLETED SUCCESSFULLY           ║");
