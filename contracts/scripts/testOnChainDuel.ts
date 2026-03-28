@@ -15,6 +15,14 @@ function formatUsd(price: number): string {
   return `$${price.toFixed(price >= 1 ? 2 : 6)}`;
 }
 
+function microBpsToBpsString(value: bigint): string {
+  const sign = value < 0n ? "-" : "";
+  const abs = value < 0n ? -value : value;
+  const integer = abs / 1_000_000n;
+  const fraction = (abs % 1_000_000n).toString().padStart(6, "0");
+  return `${sign}${integer.toString()}.${fraction}`;
+}
+
 type PriceSnapshot = {
   symbol: string;
   rawPrice: bigint;
@@ -418,6 +426,10 @@ async function main() {
     console.log("Winner:", finalInfo[5] === "0x0000000000000000000000000000000000000000" ? "TIE" : finalInfo[5]);
     console.log("Creator Return (Precise):", preciseReturns[0].toString(), "micro-bps");
     console.log("Opponent Return (Precise):", preciseReturns[1].toString(), "micro-bps");
+    const preciseDelta = preciseReturns[0] - preciseReturns[1];
+    console.log("Creator Return (Precise bps):", microBpsToBpsString(preciseReturns[0]), "bps");
+    console.log("Opponent Return (Precise bps):", microBpsToBpsString(preciseReturns[1]), "bps");
+    console.log("Precise Delta (Creator - Opponent):", microBpsToBpsString(preciseDelta), "bps");
     console.log("Creator Return (Rounded):", finalInfo[7].toString(), "basis points");
     console.log("Opponent Return (Rounded):", finalInfo[8].toString(), "basis points");
 
