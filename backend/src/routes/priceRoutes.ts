@@ -3,6 +3,11 @@ import { PythPriceService } from '../services/pythPriceService';
 
 export const priceRoutes = Router();
 
+function logRouteError(prefix: string, error: any) {
+  const message = error?.message || String(error);
+  console.error(`${prefix}: ${message}`);
+}
+
 function mapPriceResponse(priceData: any) {
   return {
     symbol: priceData.symbol,
@@ -53,7 +58,7 @@ priceRoutes.get('/:symbol', async (req: Request, res: Response) => {
       price: mapPriceResponse(priceData)
     });
   } catch (error: any) {
-    console.error(`Error fetching price for ${req.params.symbol}:`, error);
+    logRouteError(`Error fetching price for ${req.params.symbol}`, error);
     res.status(500).json({
       error: 'Failed to fetch price',
       message: error.message
@@ -91,7 +96,7 @@ priceRoutes.post('/batch', async (req: Request, res: Response) => {
       count: Object.keys(prices).length
     });
   } catch (error: any) {
-    console.error('Error fetching batch prices:', error);
+    logRouteError('Error fetching batch prices', error);
     res.status(500).json({
       error: 'Failed to fetch prices',
       message: error.message
@@ -129,7 +134,7 @@ priceRoutes.post('/live-batch', async (req: Request, res: Response) => {
       count: Object.keys(prices).length
     });
   } catch (error: any) {
-    console.error('Error fetching live batch prices:', error);
+    logRouteError('Error fetching live batch prices', error);
     res.status(500).json({
       error: 'Failed to fetch live prices',
       message: error.message
@@ -175,7 +180,7 @@ priceRoutes.post('/batch-at', async (req: Request, res: Response) => {
       count: Object.keys(prices).length
     });
   } catch (error: any) {
-    console.error('Error fetching historical batch prices:', error);
+    logRouteError('Error fetching historical batch prices', error);
     res.status(500).json({
       error: 'Failed to fetch prices',
       message: error.message

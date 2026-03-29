@@ -21,7 +21,9 @@ export class PythPriceService {
     'STRK': '0x6a182399ff70ccf3e06024898942028204125a819e519a335ffa4579e66cd870',
     'ARB': '0x3fa4252848f9f0a1480be62745a4629d9eb1322aebab8a791e344b3b9c1adcf5',
     'OP': '0x385f64d993f7b77d8182ed5003d97c60aa3361f3cecfe711544d2d59165e9bdf',
-    'MATIC': '0x5de33a9112c2b700b8d30b8a3402c103578ccfa2765696471cc672bd5cf6ac52',
+    // Hermes now serves Polygon as POL/USD; keep MATIC symbol mapped for UI compatibility.
+    'MATIC': '0xffd11c5a1cfd42f80afb2df4d9f264c15f956d68153335374ec10722edd70472',
+    'POL': '0xffd11c5a1cfd42f80afb2df4d9f264c15f956d68153335374ec10722edd70472',
     'LINK': '0x8ac0c70fff57e9aefdf5edf44b51d62c2d433653cbb2cf5cc06bb115af04d221',
     'AVAX': '0x93da3352f9f1d105fdfe4971cfa80e9dd777bfc5d0f683ebb6e1294b92137bb7',
     'USDC': '0xeaa020c61cc479712813461ce153894a96a6c00b21ed0cfc2798d1f9a9e9c94a',
@@ -229,18 +231,28 @@ export class PythPriceService {
   private async fetchHermesParsed(path: string, priceIds: string[]): Promise<any> {
     const url = `${this.priceServiceUrl}/${path}`;
 
-    const response = await axios.get(url, {
-      params: { "ids[]": priceIds },
-      timeout: 15000,
-      paramsSerializer: {
-        serialize: (params: Record<string, any>) => {
-          const ids = Array.isArray(params["ids[]"]) ? params["ids[]"] : [];
-          return ids.map((id: string) => `ids[]=${encodeURIComponent(id)}`).join("&");
+    try {
+      const response = await axios.get(url, {
+        params: { "ids[]": priceIds },
+        timeout: 15000,
+        paramsSerializer: {
+          serialize: (params: Record<string, any>) => {
+            const ids = Array.isArray(params["ids[]"]) ? params["ids[]"] : [];
+            return ids.map((id: string) => `ids[]=${encodeURIComponent(id)}`).join("&");
+          },
         },
-      },
-    });
+      });
 
-    return response.data;
+      return response.data;
+    } catch (error: any) {
+      const status = error?.response?.status;
+      const responseData = error?.response?.data;
+      const details = typeof responseData === "string"
+        ? responseData
+        : (responseData ? JSON.stringify(responseData) : error?.message || "Unknown Hermes error");
+
+      throw new Error(`Hermes request failed (${status ?? "no-status"}) for ${path}: ${details}`);
+    }
   }
 
   private mapParsedPrices(symbols: string[], ids: string[], parsedFeeds: any[]): Map<string, PriceData> {

@@ -28,7 +28,8 @@ const DURATION_OPTIONS = [
 ]
 const FLOW_EVM_TESTNET_CHAIN_ID = Number(process.env.NEXT_PUBLIC_FLOW_EVM_CHAIN_ID ?? "545")
 const FLOW_EVM_TESTNET_NAME = "Flow EVM Testnet"
-const ENTRY_OPTIONS = [0.01, 0.05, 0.1, 0.25, 0.5, 1.0]
+const MIN_ENTRY_AMOUNT = 0.001
+const ENTRY_OPTIONS = [0.001, 0.01, 0.05, 0.1, 0.25, 0.5, 1.0]
 
 const ASSET_COLORS: Record<string, string> = {
   BTC:  "#F7931A",
@@ -155,7 +156,7 @@ export default function CreateDuelPage() {
 
   const [step, setStep]               = useState(1)
   const [duration, setDuration]       = useState(86400)
-  const [entryAmount, setEntryAmount] = useState(0.05)
+  const [entryAmountInput, setEntryAmountInput] = useState("0.05")
   const [nodes, setNodes]             = useState<FlowNode[]>([])
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [submitted, setSubmitted]       = useState(false)
@@ -184,6 +185,9 @@ export default function CreateDuelPage() {
   const hasTier2Asset = symbols.some((symbol) => (ASSET_TIERS[symbol] ?? 1) === 1)
   const tierSplitValid = tier1Weight === 5000 && tier2Weight === 5000
   const allocValid = isWeightValid(allocs) && nodes.length >= 2 && hasTier1Asset && hasTier2Asset
+  const parsedEntryAmount = Number(entryAmountInput)
+  const entryAmount = Number.isFinite(parsedEntryAmount) ? parsedEntryAmount : 0
+  const isEntryAmountValid = entryAmount >= MIN_ENTRY_AMOUNT
   const selected = symbols
 
   // ── add / remove ─────────────────────────────────────────────────────────
@@ -321,6 +325,10 @@ export default function CreateDuelPage() {
       const submitTierTotals = getTierWeightTotals(submitSymbols, submitWeights)
       if (submitTierTotals.tier1 !== 5000 || submitTierTotals.tier2 !== 5000) {
         throw new Error("Portfolio must be exactly 50/50 across Tier 1 and Tier 2 before submission.")
+      }
+
+      if (!isEntryAmountValid) {
+        throw new Error(`Entry amount must be at least ${MIN_ENTRY_AMOUNT} FLOW per player.`)
       }
 
       const entryWei = parseEther(entryAmount.toString())
@@ -539,7 +547,7 @@ export default function CreateDuelPage() {
               <label className="font-mono text-sm font-semibold text-foreground mb-3 block">Entry Amount (FLOW)</label>
               <div className="flex flex-wrap gap-2">
                 {ENTRY_OPTIONS.map(amt => (
-                  <button key={amt} onClick={() => setEntryAmount(amt)}
+                  <button key={amt} onClick={() => setEntryAmountInput(String(amt))}
                     className={`rounded-full border px-5 py-2 font-mono text-xs transition-all duration-200 ${
                       entryAmount === amt ? "border-primary bg-primary/15 text-primary" : "border-border text-muted-foreground hover:border-primary/40 hover:text-foreground"
                     }`}>
@@ -547,10 +555,26 @@ export default function CreateDuelPage() {
                   </button>
                 ))}
               </div>
+              <div className="mt-3">
+                <label className="font-mono text-[11px] text-muted-foreground mb-1 block">Custom stake per player</label>
+                <input
+                  type="number"
+                  min={MIN_ENTRY_AMOUNT}
+                  step="0.001"
+                  value={entryAmountInput}
+                  onChange={(e) => setEntryAmountInput(e.target.value)}
+                  className="w-full rounded-xl border border-border bg-muted/20 px-3 py-2 font-mono text-sm text-foreground focus:outline-none focus:border-primary/50"
+                  placeholder="e.g. 0.137"
+                />
+                <p className={`mt-1 font-mono text-[11px] ${isEntryAmountValid ? "text-muted-foreground" : "text-amber-400"}`}>
+                  Minimum stake: {MIN_ENTRY_AMOUNT} FLOW per player
+                </p>
+              </div>
             </div>
 
             <button onClick={() => setStep(2)}
-              className="w-full rounded-full bg-primary text-primary-foreground font-mono font-semibold py-3 hover:shadow-[0_0_20px_hsl(var(--primary)/0.4)] hover:scale-[1.01] transition-all duration-200 flex items-center justify-center gap-2">
+              disabled={!isEntryAmountValid}
+              className="w-full rounded-full bg-primary text-primary-foreground font-mono font-semibold py-3 hover:shadow-[0_0_20px_hsl(var(--primary)/0.4)] hover:scale-[1.01] transition-all duration-200 flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed">
               Build Portfolio Flow <ArrowRight className="h-4 w-4" />
             </button>
           </div>
