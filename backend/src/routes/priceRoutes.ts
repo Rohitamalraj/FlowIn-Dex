@@ -3,6 +3,18 @@ import { PythPriceService } from '../services/pythPriceService';
 
 export const priceRoutes = Router();
 
+function mapPriceResponse(priceData: any) {
+  return {
+    symbol: priceData.symbol,
+    price: priceData.formattedPrice,
+    priceRaw: priceData.price,
+    confidence: priceData.conf,
+    exponent: priceData.expo,
+    publishTime: priceData.publishTime,
+    publishTimeReadable: new Date(priceData.publishTime * 1000).toISOString(),
+  };
+}
+
 /**
  * GET /api/prices/supported
  * Get list of supported assets
@@ -38,15 +50,7 @@ priceRoutes.get('/:symbol', async (req: Request, res: Response) => {
 
     res.json({
       success: true,
-      price: {
-        symbol: priceData.symbol,
-        price: priceData.formattedPrice,
-        priceRaw: priceData.price,
-        confidence: priceData.conf,
-        exponent: priceData.expo,
-        publishTime: priceData.publishTime,
-        publishTimeReadable: new Date(priceData.publishTime * 1000).toISOString()
-      }
+      price: mapPriceResponse(priceData)
     });
   } catch (error: any) {
     console.error(`Error fetching price for ${req.params.symbol}:`, error);
@@ -78,15 +82,7 @@ priceRoutes.post('/batch', async (req: Request, res: Response) => {
 
     const prices: any = {};
     priceMap.forEach((priceData, symbol) => {
-      prices[symbol] = {
-        symbol: priceData.symbol,
-        price: priceData.formattedPrice,
-        priceRaw: priceData.price,
-        confidence: priceData.conf,
-        exponent: priceData.expo,
-        publishTime: priceData.publishTime,
-        publishTimeReadable: new Date(priceData.publishTime * 1000).toISOString()
-      };
+      prices[symbol] = mapPriceResponse(priceData);
     });
 
     res.json({
@@ -96,6 +92,90 @@ priceRoutes.post('/batch', async (req: Request, res: Response) => {
     });
   } catch (error: any) {
     console.error('Error fetching batch prices:', error);
+    res.status(500).json({
+      error: 'Failed to fetch prices',
+      message: error.message
+    });
+  }
+});
+
+/**
+ * POST /api/prices/live-batch
+ * Get latest uncached prices for multiple assets.
+ * Body: { symbols: string[] }
+ */
+priceRoutes.post('/live-batch', async (req: Request, res: Response) => {
+  try {
+    const { symbols } = req.body;
+
+    if (!symbols || !Array.isArray(symbols) || symbols.length === 0) {
+      return res.status(400).json({
+        error: 'Invalid request',
+        message: 'symbols array is required'
+      });
+    }
+
+    const pythService = PythPriceService.getInstance();
+    const priceMap = await pythService.getPricesLive(symbols);
+
+    const prices: any = {};
+    priceMap.forEach((priceData, symbol) => {
+      prices[symbol] = mapPriceResponse(priceData);
+    });
+
+    res.json({
+      success: true,
+      prices,
+      count: Object.keys(prices).length
+    });
+  } catch (error: any) {
+    console.error('Error fetching live batch prices:', error);
+    res.status(500).json({
+      error: 'Failed to fetch live prices',
+      message: error.message
+    });
+  }
+});
+
+/**
+ * POST /api/prices/batch-at
+ * Get prices for multiple assets at a specific unix timestamp.
+ * Body: { symbols: string[], timestamp: number }
+ */
+priceRoutes.post('/batch-at', async (req: Request, res: Response) => {
+  try {
+    const { symbols, timestamp } = req.body;
+
+    if (!symbols || !Array.isArray(symbols) || symbols.length === 0) {
+      return res.status(400).json({
+        error: 'Invalid request',
+        message: 'symbols array is required'
+      });
+    }
+
+    const ts = Number(timestamp);
+    if (!Number.isFinite(ts) || ts <= 0) {
+      return res.status(400).json({
+        error: 'Invalid request',
+        message: 'timestamp must be a positive unix timestamp (seconds)'
+      });
+    }
+
+    const pythService = PythPriceService.getInstance();
+    const priceMap = await pythService.getPricesAt(symbols, ts);
+
+    const prices: any = {};
+    priceMap.forEach((priceData, symbol) => {
+      prices[symbol] = mapPriceResponse(priceData);
+    });
+
+    res.json({
+      success: true,
+      prices,
+      count: Object.keys(prices).length
+    });
+  } catch (error: any) {
+    console.error('Error fetching historical batch prices:', error);
     res.status(500).json({
       error: 'Failed to fetch prices',
       message: error.message

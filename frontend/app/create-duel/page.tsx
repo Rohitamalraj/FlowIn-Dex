@@ -2,24 +2,32 @@
 
 import { useState, useRef, useCallback } from "react"
 import { useRouter } from "next/navigation"
+import { useAccount, useBalance, usePublicClient, useSwitchChain, useWriteContract } from "wagmi"
+import { decodeEventLog, parseEther } from "viem"
 import AppShell from "@/components/duel/app-shell"
 import Hero from "@/components/duel/hero"
 import { SUPPORTED_ASSETS } from "@/lib/duel-types"
 import type { WeightAllocation } from "@/lib/duel-types"
 import {
-  computeTotalWeight, isWeightValid, normalizeWeights,
-  formatEth, basisPointsToPercent,
+  computeTotalWeight,
+  isWeightValid,
+  normalizeWeights,
+  formatEth,
 } from "@/lib/duel-utils"
-import { CheckCircle2, Loader2, Lock, ArrowRight, ArrowLeft, Plus, Minus, X, Shuffle, Zap } from "lucide-react"
+import { ASSET_TIERS, buildContractAssetArrays, getTierWeightTotals } from "@/lib/pyth-config"
+import { FACTORY_ABI, DUEL_ABI } from "@/lib/contracts"
+import { CheckCircle2, Loader2, Lock, ArrowRight, ArrowLeft, Plus, Minus, X, Shuffle, Zap, Wallet } from "lucide-react"
 
 // ─── Constants ─────────────────────────────────────────────────────────────────
 const DURATION_OPTIONS = [
-  { label: "1 Hour",   seconds: 3600   },
-  { label: "6 Hours",  seconds: 21600  },
-  { label: "24 Hours", seconds: 86400  },
-  { label: "3 Days",   seconds: 259200 },
-  { label: "7 Days",   seconds: 604800 },
+  { label: "2 min",  seconds: 120  },
+  { label: "5 min",  seconds: 300  },
+  { label: "10 min", seconds: 600  },
+  { label: "30 min", seconds: 1800 },
+  { label: "1 Hour", seconds: 3600 },
 ]
+const FLOW_EVM_TESTNET_CHAIN_ID = Number(process.env.NEXT_PUBLIC_FLOW_EVM_CHAIN_ID ?? "545")
+const FLOW_EVM_TESTNET_NAME = "Flow EVM Testnet"
 const ENTRY_OPTIONS = [0.01, 0.05, 0.1, 0.25, 0.5, 1.0]
 
 const ASSET_COLORS: Record<string, string> = {
@@ -27,7 +35,15 @@ const ASSET_COLORS: Record<string, string> = {
   ETH:  "#627EEA",
   SOL:  "#9945FF",
   BNB:  "#F0B90B",
+  STRK: "#8A63D2",
+  ARB:  "#28A0F0",
+  OP:   "#FF0420",
+  MATIC:"#8247E5",
+  LINK: "#2A5ADA",
+  AVAX: "#E84142",
   USDC: "#2775CA",
+  USDT: "#26A17B",
+  DAI:  "#F5AC37",
 }
 
 // Node sizes
@@ -50,6 +66,56 @@ function distributeY(count: number, idx: number): number {
   const totalH  = spacing * count - (spacing - C_H)
   const startY  = Math.max(20, (CANVAS_H - totalH) / 2)
   return startY + idx * spacing
+}
+
+function truncateAddress(address?: string): string {
+  if (!address) return ""
+  return `${address.slice(0, 6)}...${address.slice(-4)}`
+}
+
+function rebalanceToTierSplit(allocations: WeightAllocation[]): WeightAllocation[] | null {
+  const tier1 = allocations.filter((a) => (ASSET_TIERS[a.symbol] ?? 1) === 0)
+  const tier2 = allocations.filter((a) => (ASSET_TIERS[a.symbol] ?? 1) === 1)
+
+  if (tier1.length === 0 || tier2.length === 0) {
+    return null
+  }
+
+  const rebalanceGroup = (group: WeightAllocation[], target: number): WeightAllocation[] => {
+    const current = group.reduce((sum, item) => sum + item.basisPoints, 0)
+
+    if (current === 0) {
+      const even = Math.floor(target / group.length)
+      const result = group.map((item, index) => ({
+        ...item,
+        basisPoints: index === group.length - 1 ? target - even * (group.length - 1) : even,
+      }))
+      return result
+    }
+
+    let remaining = target
+    const result = group.map((item, index) => {
+      const nextWeight =
+        index === group.length - 1
+          ? remaining
+          : Math.floor((item.basisPoints * target) / current)
+
+      remaining -= nextWeight
+      return { ...item, basisPoints: nextWeight }
+    })
+
+    return result
+  }
+
+  const tier1Balanced = rebalanceGroup(tier1, 5000)
+  const tier2Balanced = rebalanceGroup(tier2, 5000)
+  const merged = [...tier1Balanced, ...tier2Balanced]
+  const mergedMap = new Map(merged.map((item) => [item.symbol, item.basisPoints]))
+
+  return allocations.map((item) => ({
+    ...item,
+    basisPoints: mergedMap.get(item.symbol) ?? item.basisPoints,
+  }))
 }
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -76,6 +142,16 @@ function AllocBar({ allocs }: { allocs: WeightAllocation[] }) {
 // ─── Main page ────────────────────────────────────────────────────────────────
 export default function CreateDuelPage() {
   const router = useRouter()
+  const { address, chainId, isConnected } = useAccount()
+  const { switchChainAsync, isPending: isSwitchingChain } = useSwitchChain()
+  const { writeContractAsync } = useWriteContract()
+  const publicClient = usePublicClient({ chainId: FLOW_EVM_TESTNET_CHAIN_ID })
+  const isWrongNetwork = isConnected && chainId !== FLOW_EVM_TESTNET_CHAIN_ID
+  const { data: walletBalance, isLoading: isBalanceLoading } = useBalance({
+    address,
+    chainId: FLOW_EVM_TESTNET_CHAIN_ID,
+    query: { enabled: Boolean(address) },
+  })
 
   const [step, setStep]               = useState(1)
   const [duration, setDuration]       = useState(86400)
@@ -83,6 +159,8 @@ export default function CreateDuelPage() {
   const [nodes, setNodes]             = useState<FlowNode[]>([])
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [submitted, setSubmitted]       = useState(false)
+  const [submitError, setSubmitError]   = useState<string | null>(null)
+  const [createdDuelAddress, setCreatedDuelAddress] = useState<string | null>(null)
 
   // Drag state
   const dragRef = useRef<{ symbol: string; ox: number; oy: number; nx: number; ny: number } | null>(null)
@@ -98,9 +176,15 @@ export default function CreateDuelPage() {
 
   // ── derived ──────────────────────────────────────────────────────────────
   const allocs: WeightAllocation[] = nodes.map(n => ({ symbol: n.symbol, basisPoints: n.basisPoints }))
-  const total    = computeTotalWeight(allocs)
-  const allocValid = isWeightValid(allocs) && nodes.length >= 2
-  const selected = nodes.map(n => n.symbol)
+  const symbols = nodes.map((n) => n.symbol)
+  const weights = nodes.map((n) => n.basisPoints)
+  const total = computeTotalWeight(allocs)
+  const { tier1: tier1Weight, tier2: tier2Weight } = getTierWeightTotals(symbols, weights)
+  const hasTier1Asset = symbols.some((symbol) => (ASSET_TIERS[symbol] ?? 1) === 0)
+  const hasTier2Asset = symbols.some((symbol) => (ASSET_TIERS[symbol] ?? 1) === 1)
+  const tierSplitValid = tier1Weight === 5000 && tier2Weight === 5000
+  const allocValid = isWeightValid(allocs) && nodes.length >= 2 && hasTier1Asset && hasTier2Asset
+  const selected = symbols
 
   // ── add / remove ─────────────────────────────────────────────────────────
   const addNode = useCallback((symbol: string) => {
@@ -130,8 +214,16 @@ export default function CreateDuelPage() {
   }
 
   const handleNormalize = () => {
-    const norm = normalizeWeights(allocs)
-    setNodes(prev => prev.map(n => ({ ...n, basisPoints: norm.find(a => a.symbol === n.symbol)?.basisPoints ?? n.basisPoints })))
+    const tierBalanced = rebalanceToTierSplit(allocs)
+    const nextAllocations = tierBalanced ?? normalizeWeights(allocs)
+    const nextMap = new Map(nextAllocations.map((a) => [a.symbol, a.basisPoints]))
+
+    setNodes((prev) =>
+      prev.map((node) => ({
+        ...node,
+        basisPoints: nextMap.get(node.symbol) ?? node.basisPoints,
+      }))
+    )
   }
 
   // ── drag ─────────────────────────────────────────────────────────────────
@@ -139,8 +231,11 @@ export default function CreateDuelPage() {
     // Don't drag if clicking a button
     if ((e.target as HTMLElement).closest("button")) return
     e.preventDefault()
-    const node = nodes.find(n => n.symbol === symbol)!
-    const rect = canvasRef.current!.getBoundingClientRect()
+    const node = nodes.find(n => n.symbol === symbol)
+    const canvas = canvasRef.current
+    if (!node || !canvas) return
+
+    const rect = canvas.getBoundingClientRect()
     dragRef.current = {
       symbol,
       ox: e.clientX - rect.left,
@@ -151,16 +246,19 @@ export default function CreateDuelPage() {
   }
 
   const onCanvasPointerMove = (e: React.PointerEvent) => {
-    if (!dragRef.current) return
-    const rect = canvasRef.current!.getBoundingClientRect()
+    const drag = dragRef.current
+    const canvas = canvasRef.current
+    if (!drag || !canvas) return
+
+    const rect = canvas.getBoundingClientRect()
     const cx = e.clientX - rect.left
     const cy = e.clientY - rect.top
-    const dx = cx - dragRef.current.ox
-    const dy = cy - dragRef.current.oy
-    const newX = Math.max(0, Math.min(rect.width - C_W, dragRef.current.nx + dx))
-    const newY = Math.max(0, Math.min(CANVAS_H - C_H, dragRef.current.ny + dy))
+    const dx = cx - drag.ox
+    const dy = cy - drag.oy
+    const newX = Math.max(0, Math.min(rect.width - C_W, drag.nx + dx))
+    const newY = Math.max(0, Math.min(CANVAS_H - C_H, drag.ny + dy))
     setNodes(prev => prev.map(n =>
-      n.symbol === dragRef.current!.symbol ? { ...n, x: newX, y: newY } : n
+      n.symbol === drag.symbol ? { ...n, x: newX, y: newY } : n
     ))
   }
 
@@ -168,11 +266,188 @@ export default function CreateDuelPage() {
 
   // ── submit ────────────────────────────────────────────────────────────────
   const handleSubmit = async () => {
+    if (!isConnected || !address || !publicClient) {
+      setSubmitError("Please connect your wallet first.")
+      return
+    }
+
+    if (!allocValid) {
+      setSubmitError("Add at least 2 assets with one Tier 1 and one Tier 2 asset, and ensure total weight is 100%.")
+      return
+    }
+
+    if (chainId !== FLOW_EVM_TESTNET_CHAIN_ID) {
+      if (!switchChainAsync) {
+        setSubmitError(`Please switch your wallet to ${FLOW_EVM_TESTNET_NAME} (chain ${FLOW_EVM_TESTNET_CHAIN_ID}).`)
+        return
+      }
+
+      try {
+        await switchChainAsync({ chainId: FLOW_EVM_TESTNET_CHAIN_ID })
+        setSubmitError(`Network switched to ${FLOW_EVM_TESTNET_NAME}. Click \"Create Duel On-Chain\" again to continue.`)
+      } catch (switchError: any) {
+        setSubmitError(
+          switchError?.shortMessage ||
+          switchError?.message ||
+          `Please switch your wallet to ${FLOW_EVM_TESTNET_NAME} (chain ${FLOW_EVM_TESTNET_CHAIN_ID}).`
+        )
+      }
+      return
+    }
+
     setIsSubmitting(true)
-    await new Promise(r => setTimeout(r, 2200))
-    setIsSubmitting(false)
-    setSubmitted(true)
-    setTimeout(() => router.push("/my-duels"), 1800)
+    setSubmitError(null)
+    try {
+      let submitAllocations = [...allocs]
+
+      if (!tierSplitValid) {
+        const rebalanced = rebalanceToTierSplit(submitAllocations)
+        if (!rebalanced) {
+          throw new Error("Portfolio must include at least one Tier 1 and one Tier 2 asset.")
+        }
+
+        submitAllocations = rebalanced
+        const rebalancedMap = new Map(rebalanced.map((a) => [a.symbol, a.basisPoints]))
+        setNodes((prev) =>
+          prev.map((node) => ({
+            ...node,
+            basisPoints: rebalancedMap.get(node.symbol) ?? node.basisPoints,
+          }))
+        )
+      }
+
+      const submitSymbols = submitAllocations.map((n) => n.symbol)
+      const submitWeights = submitAllocations.map((n) => n.basisPoints)
+      const submitTierTotals = getTierWeightTotals(submitSymbols, submitWeights)
+      if (submitTierTotals.tier1 !== 5000 || submitTierTotals.tier2 !== 5000) {
+        throw new Error("Portfolio must be exactly 50/50 across Tier 1 and Tier 2 before submission.")
+      }
+
+      const entryWei = parseEther(entryAmount.toString())
+
+      if (walletBalance && walletBalance.value < entryWei) {
+        throw new Error(`Insufficient wallet balance. You need at least ${entryAmount} FLOW to create this duel.`)
+      }
+
+      const factoryAddress =
+        (process.env.NEXT_PUBLIC_FLOW_EVM_DUEL_FACTORY ?? process.env.NEXT_PUBLIC_FLOW_EVM_FACTORY) as
+          | `0x${string}`
+          | undefined
+
+      if (!factoryAddress || !/^0x[a-fA-F0-9]{40}$/.test(factoryAddress)) {
+        throw new Error("Factory address not configured correctly (expected a 0x-prefixed EVM address).")
+      }
+
+      const isSelectorMismatch = (message: string) =>
+        /gas limit too high|no data present|missing revert data|function selector|not recognized/i.test(message)
+
+      // 1️⃣ Create the duel on-chain
+      let receipt1: any
+      let requiresPortfolioSubmit = false
+      try {
+        // ShieldVaultFactory signature (active Flow EVM test deployment).
+        const hash1 = await writeContractAsync({
+          chainId: FLOW_EVM_TESTNET_CHAIN_ID,
+          address: factoryAddress,
+          abi: FACTORY_ABI,
+          functionName: "createDuel",
+          args: [entryWei, BigInt(duration), submitSymbols, submitWeights] as any,
+          value: entryWei,
+        })
+
+        receipt1 = await publicClient.waitForTransactionReceipt({ hash: hash1, confirmations: 1 })
+        if (receipt1.status !== "success") throw new Error("Duel creation transaction reverted")
+      } catch (createErr: any) {
+        const createMessage = createErr?.shortMessage || createErr?.message || ""
+        if (!isSelectorMismatch(createMessage)) {
+          throw createErr
+        }
+
+        // Fallback for DuelFactory/DuelFactoryOnChain signature.
+        const { assets, priceIds, tiers, syms } = buildContractAssetArrays(submitSymbols)
+        const assetAddresses = assets as `0x${string}`[]
+        const assetPriceIds = priceIds as `0x${string}`[]
+
+        const fallbackHash = await writeContractAsync({
+          chainId: FLOW_EVM_TESTNET_CHAIN_ID,
+          address: factoryAddress,
+          abi: FACTORY_ABI,
+          functionName: "createDuel",
+          args: [entryWei, BigInt(duration), assetAddresses, assetPriceIds, tiers, syms] as any,
+          value: entryWei,
+        })
+
+        receipt1 = await publicClient.waitForTransactionReceipt({ hash: fallbackHash, confirmations: 1 })
+        if (receipt1.status !== "success") throw new Error("Duel creation transaction reverted")
+        requiresPortfolioSubmit = true
+      }
+
+      // Parse logs to find DuelCreated event
+      let newDuelAddress = ""
+      for (const log of receipt1.logs) {
+        try {
+          const decoded = decodeEventLog({
+            abi: FACTORY_ABI,
+            data: log.data,
+            topics: log.topics,
+            strict: false,
+          })
+
+          if (decoded.eventName === "DuelCreated") {
+            newDuelAddress = (decoded.args as any).duelContract
+            break
+          }
+        } catch (e) {
+          // Ignore error parsing unrelated logs
+        }
+      }
+
+      if (!newDuelAddress) throw new Error("Failed to parse duel address from transaction logs")
+      setCreatedDuelAddress(newDuelAddress)
+
+      // 2️⃣ Submit creator's portfolio
+      if (requiresPortfolioSubmit) {
+        const { assets, priceIds } = buildContractAssetArrays(submitSymbols)
+        const assetAddresses = assets as `0x${string}`[]
+        const assetPriceIds = priceIds as `0x${string}`[]
+
+        try {
+          const hash2 = await writeContractAsync({
+            chainId: FLOW_EVM_TESTNET_CHAIN_ID,
+            address: newDuelAddress as `0x${string}`,
+            abi: DUEL_ABI,
+            functionName: "submitPortfolio",
+            args: [assetAddresses, assetPriceIds, submitWeights],
+          })
+
+          const receipt2 = await publicClient.waitForTransactionReceipt({ hash: hash2, confirmations: 1 })
+          if (receipt2.status !== "success") throw new Error("Portfolio submission transaction reverted")
+        } catch (submitErr: any) {
+          const submitMessage = submitErr?.shortMessage || submitErr?.message || ""
+          if (!isSelectorMismatch(submitMessage)) {
+            throw submitErr
+          }
+          // ShieldVaultDuel stores creator portfolio at creation and does not expose submitPortfolio.
+        }
+      }
+
+      setIsSubmitting(false)
+      setSubmitted(true)
+      setTimeout(() => router.push("/my-duels?tab=pending"), 1800)
+    } catch (err: any) {
+      console.error(err)
+      const message = err?.shortMessage || err?.message || "Transaction failed. Please try again."
+
+      if (/flow-mainnet/i.test(message) && /invalid for chain/i.test(message)) {
+        setSubmitError(
+          `Wrong network detected. Switch your wallet to ${FLOW_EVM_TESTNET_NAME} (chain ${FLOW_EVM_TESTNET_CHAIN_ID}) and retry.`
+        )
+      } else {
+        setSubmitError(message)
+      }
+
+      setIsSubmitting(false)
+    }
   }
 
   return (
@@ -209,6 +484,43 @@ export default function CreateDuelPage() {
         ══════════════════════════════════════════════════════════════════ */}
         {step === 1 && (
           <div className="space-y-8">
+            <div className="rounded-xl border border-border bg-card p-4 flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <Wallet className="h-4 w-4 text-primary" />
+                <div>
+                  <p className="font-mono text-xs text-muted-foreground">Connected Wallet</p>
+                  <p className="font-mono text-sm text-foreground font-semibold">
+                    {isConnected && address ? truncateAddress(address) : "Not connected"}
+                  </p>
+                  <p className={`font-mono text-[11px] ${isWrongNetwork ? "text-amber-400" : "text-muted-foreground"}`}>
+                    {isConnected
+                      ? isWrongNetwork
+                        ? `Wrong network (chain ${chainId ?? "?"}). Switch to ${FLOW_EVM_TESTNET_NAME}.`
+                        : `${FLOW_EVM_TESTNET_NAME} (chain ${FLOW_EVM_TESTNET_CHAIN_ID})`
+                      : `${FLOW_EVM_TESTNET_NAME} required`}
+                  </p>
+                </div>
+              </div>
+              <div className="text-right">
+                <p className="font-mono text-xs text-muted-foreground">Balance</p>
+                <p className="font-mono text-sm text-primary font-semibold">
+                  {isConnected
+                    ? isBalanceLoading
+                      ? "Loading..."
+                      : `${Number(walletBalance?.formatted ?? "0").toFixed(4)} ${walletBalance?.symbol ?? "FLOW"}`
+                    : "--"}
+                </p>
+              </div>
+            </div>
+
+            {isWrongNetwork && (
+              <div className="rounded-xl border border-amber-500/30 bg-amber-500/8 p-4">
+                <p className="font-mono text-xs text-amber-300">
+                  Your wallet is on chain {chainId}. This app is deployed on {FLOW_EVM_TESTNET_NAME} (chain {FLOW_EVM_TESTNET_CHAIN_ID}).
+                </p>
+              </div>
+            )}
+
             <div>
               <label className="font-mono text-sm font-semibold text-foreground mb-3 block">Duel Duration</label>
               <div className="flex flex-wrap gap-2">
@@ -224,7 +536,7 @@ export default function CreateDuelPage() {
             </div>
 
             <div>
-              <label className="font-mono text-sm font-semibold text-foreground mb-3 block">Entry Amount (ETH)</label>
+              <label className="font-mono text-sm font-semibold text-foreground mb-3 block">Entry Amount (FLOW)</label>
               <div className="flex flex-wrap gap-2">
                 {ENTRY_OPTIONS.map(amt => (
                   <button key={amt} onClick={() => setEntryAmount(amt)}
@@ -510,15 +822,15 @@ export default function CreateDuelPage() {
                 </div>
 
                 <div className="flex items-center gap-3 shrink-0">
-                  {nodes.length >= 2 && !allocValid && (
+                  {nodes.length >= 2 && (!allocValid || !tierSplitValid) && (
                     <button onClick={handleNormalize}
                       className="flex items-center gap-1 font-mono text-xs text-primary border border-primary/30 rounded-full px-2.5 py-1 hover:bg-primary/10 transition-colors">
-                      <Shuffle className="h-3 w-3" /> Balance
+                      <Shuffle className="h-3 w-3" /> Balance 50/50
                     </button>
                   )}
                   <span className={`font-mono text-xs font-bold tabular-nums ${
                     nodes.length < 2 ? "text-muted-foreground/40" :
-                    allocValid       ? "text-primary" : "text-red-400"
+                    allocValid ? "text-primary" : "text-red-400"
                   }`}>
                     {(total / 100).toFixed(1)}% / 100%
                   </span>
@@ -530,6 +842,18 @@ export default function CreateDuelPage() {
                 </div>
               </div>
               <AllocBar allocs={allocs} />
+              <div className="mt-2 flex items-center justify-between font-mono text-[10px]">
+                <span className="text-muted-foreground">Tier 1: {(tier1Weight / 100).toFixed(1)}%</span>
+                <span className="text-muted-foreground">Tier 2: {(tier2Weight / 100).toFixed(1)}%</span>
+                <span className={tierSplitValid ? "text-primary" : "text-amber-400"}>
+                  {tierSplitValid ? "50/50 split ready" : "Target is 50/50"}
+                </span>
+              </div>
+              {!hasTier1Asset || !hasTier2Asset ? (
+                <p className="mt-2 font-mono text-[10px] text-amber-400">
+                  Add at least one Tier 1 asset and one Tier 2 asset to satisfy on-chain rules.
+                </p>
+              ) : null}
             </div>
 
             {/* ── Navigation ───────────────────────────────────────────── */}
@@ -559,6 +883,9 @@ export default function CreateDuelPage() {
                 <CheckCircle2 className="h-12 w-12 text-primary" />
                 <h2 className="font-mono font-bold text-foreground text-lg">Duel Created!</h2>
                 <p className="font-mono text-sm text-muted-foreground">Your encrypted strategy is on-chain. Redirecting…</p>
+                {createdDuelAddress && (
+                  <p className="font-mono text-xs text-primary/80">{truncateAddress(createdDuelAddress)}</p>
+                )}
               </div>
             ) : (
               <>
@@ -568,6 +895,7 @@ export default function CreateDuelPage() {
                     ["Duration",    DURATION_OPTIONS.find(d => d.seconds === duration)?.label ?? ""],
                     ["Entry Amount", formatEth(entryAmount) + " per player"],
                     ["Prize Pool",   formatEth(entryAmount * 2) + " total"],
+                    ["Tier Split", `${(tier1Weight / 100).toFixed(1)}% Tier 1 / ${(tier2Weight / 100).toFixed(1)}% Tier 2`],
                   ].map(([label, value]) => (
                     <div key={label} className="flex items-center justify-between border-b border-border pb-3">
                       <span className="font-mono text-xs text-muted-foreground">{label}</span>
@@ -596,16 +924,52 @@ export default function CreateDuelPage() {
                   </p>
                 </div>
 
+                {!tierSplitValid && hasTier1Asset && hasTier2Asset && (
+                  <div className="rounded-xl border border-amber-500/30 bg-amber-500/8 p-4">
+                    <p className="font-mono text-xs text-amber-300">
+                      On-chain settlement requires an exact 50/50 split between Tier 1 and Tier 2. We will auto-balance your weights at submit.
+                    </p>
+                  </div>
+                )}
+
+                {/* Wallet not connected warning */}
+                {!isConnected && (
+                  <div className="rounded-xl border border-amber-500/30 bg-amber-500/8 p-4 flex items-center gap-3">
+                    <Wallet className="h-4 w-4 text-amber-400 shrink-0" />
+                    <p className="font-mono text-xs text-amber-300">
+                      Connect your wallet to create a duel on-chain.
+                    </p>
+                  </div>
+                )}
+
+                {isWrongNetwork && (
+                  <div className="rounded-xl border border-amber-500/30 bg-amber-500/8 p-4 flex items-center gap-3">
+                    <Wallet className="h-4 w-4 text-amber-400 shrink-0" />
+                    <p className="font-mono text-xs text-amber-300">
+                      Switch to {FLOW_EVM_TESTNET_NAME} (chain {FLOW_EVM_TESTNET_CHAIN_ID}) before creating this duel.
+                    </p>
+                  </div>
+                )}
+
+                {/* Error display */}
+                {submitError && (
+                  <div className="rounded-xl border border-red-500/30 bg-red-500/8 p-4">
+                    <p className="font-mono text-xs text-red-400">{submitError}</p>
+                  </div>
+                )}
+
                 <div className="flex gap-3">
                   <button onClick={() => setStep(2)}
                     className="flex items-center gap-2 rounded-full border border-border text-muted-foreground font-mono text-sm px-6 py-3 hover:text-foreground hover:border-muted-foreground transition-all">
                     <ArrowLeft className="h-4 w-4" /> Back
                   </button>
-                  <button onClick={handleSubmit} disabled={isSubmitting}
-                    className="flex-1 rounded-full bg-primary text-primary-foreground font-mono font-semibold py-3 hover:shadow-[0_0_20px_hsl(var(--primary)/0.4)] transition-all flex items-center justify-center gap-2 disabled:opacity-70">
-                    {isSubmitting
-                      ? <><Loader2 className="h-4 w-4 animate-spin" /> Encrypting & Submitting…</>
-                      : <><Lock className="h-4 w-4" /> Encrypt & Create Duel</>}
+                  <button onClick={handleSubmit} disabled={isSubmitting || !isConnected || isSwitchingChain}
+                    className="flex-1 rounded-full bg-primary text-primary-foreground font-mono font-semibold py-3 hover:shadow-[0_0_20px_hsl(var(--primary)/0.4)] transition-all flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed">
+                    {isSwitchingChain
+                      ? <><Loader2 className="h-4 w-4 animate-spin" /> Switching Network…</>
+                      : isSubmitting
+                      ? <><Loader2 className="h-4 w-4 animate-spin" /> Creating On-Chain…</>
+                      : <><Lock className="h-4 w-4" /> Create Duel On-Chain</>}
                   </button>
                 </div>
               </>

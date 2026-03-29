@@ -166,6 +166,28 @@ export class PythPriceService {
   }
 
   /**
+   * Get uncached latest prices for multiple assets.
+   * Uses Hermes REST latest endpoint to avoid stale cache in duel live charts.
+   */
+  public async getPricesLive(symbols: string[]): Promise<Map<string, PriceData>> {
+    const normalized = this.normalizeSymbols(symbols);
+    const ids = normalized.map((symbol) => this.getPriceFeedId(symbol));
+    const payload = await this.fetchHermesParsed(`v2/updates/price/latest`, ids);
+    return this.mapParsedPrices(normalized, ids, payload?.parsed);
+  }
+
+  /**
+   * Get prices at (or closest before) a given unix timestamp for multiple assets.
+   */
+  public async getPricesAt(symbols: string[], timestampSec: number): Promise<Map<string, PriceData>> {
+    const normalized = this.normalizeSymbols(symbols);
+    const ids = normalized.map((symbol) => this.getPriceFeedId(symbol));
+    const safeTs = Math.max(1, Math.floor(timestampSec));
+    const payload = await this.fetchHermesParsed(`v2/updates/price/${safeTs}`, ids);
+    return this.mapParsedPrices(normalized, ids, payload?.parsed);
+  }
+
+  /**
    * Get price feed ID for a symbol
    * @param symbol Asset symbol
    * @returns Pyth price feed ID
@@ -184,6 +206,85 @@ export class PythPriceService {
    */
   public getSupportedSymbols(): string[] {
     return Object.keys(PythPriceService.PRICE_FEED_IDS);
+  }
+
+  private normalizeSymbols(symbols: string[]): string[] {
+    const seen = new Set<string>();
+    const normalized: string[] = [];
+
+    for (const symbol of symbols) {
+      const upper = String(symbol || "").toUpperCase().trim();
+      if (!upper || seen.has(upper)) continue;
+      seen.add(upper);
+      normalized.push(upper);
+    }
+
+    if (normalized.length === 0) {
+      throw new Error("At least one symbol is required");
+    }
+
+    return normalized;
+  }
+
+  private async fetchHermesParsed(path: string, priceIds: string[]): Promise<any> {
+    const url = `${this.priceServiceUrl}/${path}`;
+
+    const response = await axios.get(url, {
+      params: { "ids[]": priceIds },
+      timeout: 15000,
+      paramsSerializer: {
+        serialize: (params: Record<string, any>) => {
+          const ids = Array.isArray(params["ids[]"]) ? params["ids[]"] : [];
+          return ids.map((id: string) => `ids[]=${encodeURIComponent(id)}`).join("&");
+        },
+      },
+    });
+
+    return response.data;
+  }
+
+  private mapParsedPrices(symbols: string[], ids: string[], parsedFeeds: any[]): Map<string, PriceData> {
+    if (!Array.isArray(parsedFeeds) || parsedFeeds.length === 0) {
+      throw new Error("No parsed Pyth feeds returned");
+    }
+
+    const parsedById = new Map<string, any>();
+    for (const feed of parsedFeeds) {
+      const feedId = String(feed?.id || "").toLowerCase();
+      if (!feedId) continue;
+      parsedById.set(feedId, feed);
+    }
+
+    const out = new Map<string, PriceData>();
+
+    for (let i = 0; i < symbols.length; i++) {
+      const symbol = symbols[i];
+      const id = ids[i].replace(/^0x/i, "").toLowerCase();
+      const feed = parsedById.get(id);
+      const price = feed?.price;
+
+      if (!price || price.price === undefined || price.expo === undefined) {
+        throw new Error(`No parsed price found for ${symbol}`);
+      }
+
+      const rawPrice = String(price.price);
+      const expo = Number(price.expo);
+      const publishTime = Number(price.publish_time || 0);
+
+      const data: PriceData = {
+        symbol,
+        priceId: ids[i],
+        price: rawPrice,
+        conf: String(price.conf || "0"),
+        expo,
+        publishTime,
+        formattedPrice: this.formatPrice(rawPrice, expo),
+      };
+
+      out.set(symbol, data);
+    }
+
+    return out;
   }
 
   /**

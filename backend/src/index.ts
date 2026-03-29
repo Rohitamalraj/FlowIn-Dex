@@ -2,7 +2,6 @@ import express, { Express, Request, Response } from 'express';
 import cors from 'cors';
 import dotenv from 'dotenv';
 import { PythPriceService } from './services/pythPriceService';
-import { EventIndexer } from './services/eventIndexer';
 import { initializeOnChainDuelService } from './services/onChainDuelService';
 import { duelRoutes } from './routes/duelRoutes';
 import { priceRoutes } from './routes/priceRoutes';
@@ -79,17 +78,6 @@ async function initializeServices() {
     initializeOnChainDuelService(rpcUrl, factoryAddress, privateKey);
     console.log(`✅ On-Chain Duel Service initialized (Factory: ${factoryAddress})\n`);
 
-    const disableEventIndexer = process.env.DISABLE_EVENT_INDEXER === 'true';
-    if (disableEventIndexer) {
-      console.log('📡 Event Indexer disabled via DISABLE_EVENT_INDEXER=true\n');
-    } else {
-      // Initialize Event Indexer
-      console.log('📡 Initializing Event Indexer...');
-      const eventIndexer = EventIndexer.getInstance();
-      await eventIndexer.start();
-      console.log('✅ Event Indexer started\n');
-    }
-
     console.log('✨ All services initialized successfully!');
   } catch (error) {
     console.error('❌ Failed to initialize services:', error);
@@ -116,15 +104,11 @@ async function startServer() {
 // Handle graceful shutdown
 process.on('SIGTERM', async () => {
   console.log('\n🛑 SIGTERM received, shutting down gracefully...');
-  const eventIndexer = EventIndexer.getInstance();
-  await eventIndexer.stop();
   process.exit(0);
 });
 
 process.on('SIGINT', async () => {
   console.log('\n🛑 SIGINT received, shutting down gracefully...');
-  const eventIndexer = EventIndexer.getInstance();
-  await eventIndexer.stop();
   process.exit(0);
 });
 

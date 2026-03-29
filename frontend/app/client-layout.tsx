@@ -3,6 +3,7 @@
 import { Analytics } from "@vercel/analytics/next"
 import { Suspense } from "react"
 import React from "react"
+import Web3Providers from "@/components/web3-providers"
 
 // <CHANGE> Added error boundary component to catch React errors
 class ErrorBoundary extends React.Component<{ children: React.ReactNode }, { hasError: boolean }> {
@@ -62,12 +63,14 @@ export default function ClientLayout({
   return (
     <ErrorBoundary>
       <GlobalErrorHandler>
-        {/* <CHANGE> Added proper loading fallback instead of null */}
-        <Suspense fallback={<div className="min-h-screen bg-black" />}>{children}</Suspense>
-        {/* <CHANGE> Wrapped Analytics in error boundary */}
-        <ErrorBoundary>
-          <Analytics />
-        </ErrorBoundary>
+        <Web3Providers>
+          {/* Added proper loading fallback instead of null */}
+          <Suspense fallback={<div className="min-h-screen bg-black" />}>{children}</Suspense>
+          {/* Wrapped Analytics in error boundary */}
+          <ErrorBoundary>
+            <Analytics />
+          </ErrorBoundary>
+        </Web3Providers>
       </GlobalErrorHandler>
     </ErrorBoundary>
   )

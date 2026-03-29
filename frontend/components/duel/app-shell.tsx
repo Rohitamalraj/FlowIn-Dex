@@ -1,8 +1,10 @@
 "use client"
 
+import React from "react"
 import Link from "next/link"
 import { usePathname } from "next/navigation"
-import { Home, PlusCircle, Swords, LayoutDashboard, HelpCircle, ArrowLeft } from "lucide-react"
+import { ConnectButton } from "@rainbow-me/rainbowkit"
+import { Home, PlusCircle, Swords, LayoutDashboard, HelpCircle } from "lucide-react"
 
 const NAV_ITEMS = [
   { href: "/",             label: "Home",         icon: Home         },
@@ -14,6 +16,20 @@ const NAV_ITEMS = [
 
 interface AppShellProps {
   children: React.ReactNode
+}
+
+/** SSR-safe wallet connect button that avoids hydration mismatch */
+function WalletButton() {
+  const [mounted, setMounted] = React.useState(false)
+  React.useEffect(() => { setMounted(true) }, [])
+  if (!mounted) return <div className="h-8 w-28 rounded-full border border-border bg-muted/30 animate-pulse" />
+  return (
+    <ConnectButton
+      chainStatus="icon"
+      showBalance={false}
+      accountStatus={{ smallScreen: "avatar", largeScreen: "address" }}
+    />
+  )
 }
 
 export default function AppShell({ children }: AppShellProps) {
@@ -51,13 +67,16 @@ export default function AppShell({ children }: AppShellProps) {
             })}
           </div>
 
-          {/* CTA */}
-          <Link
-            href="/create-duel"
-            className="rounded-full bg-primary text-primary-foreground font-mono text-xs font-semibold px-4 py-2 hover:shadow-[0_0_12px_hsl(var(--primary)/0.4)] transition-all duration-200"
-          >
-            + New Duel
-          </Link>
+          {/* Right: Wallet connect + New Duel */}
+          <div className="flex items-center gap-2">
+            <WalletButton />
+            <Link
+              href="/create-duel"
+              className="hidden sm:flex rounded-full bg-primary text-primary-foreground font-mono text-xs font-semibold px-4 py-2 hover:shadow-[0_0_12px_hsl(var(--primary)/0.4)] transition-all duration-200"
+            >
+              + New Duel
+            </Link>
+          </div>
         </div>
       </nav>
 

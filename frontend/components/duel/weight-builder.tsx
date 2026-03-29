@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useCallback } from "react"
+import { useState, useCallback, useEffect, useMemo, useRef } from "react"
 import { AlertCircle, CheckCircle2, RefreshCw } from "lucide-react"
 import { SUPPORTED_ASSETS, type WeightAllocation } from "@/lib/duel-types"
 import {
@@ -23,17 +23,39 @@ export default function WeightBuilder({
   onWeightsChange,
   disabled = false,
 }: WeightBuilderProps) {
-  const assets = allowedSymbols
-    ? SUPPORTED_ASSETS.filter((a) => allowedSymbols.includes(a.symbol))
-    : SUPPORTED_ASSETS
+  const onWeightsChangeRef = useRef(onWeightsChange)
 
-  const initialWeights: WeightAllocation[] = assets.map((a, i) => ({
-    symbol: a.symbol,
-    basisPoints: i === 0 ? 10000 - (assets.length - 1) * Math.floor(10000 / assets.length)
-                         : Math.floor(10000 / assets.length),
-  }))
+  useEffect(() => {
+    onWeightsChangeRef.current = onWeightsChange
+  }, [onWeightsChange])
 
-  const [allocations, setAllocations] = useState<WeightAllocation[]>(initialWeights)
+  const assets = useMemo(
+    () =>
+      allowedSymbols
+        ? SUPPORTED_ASSETS.filter((a) => allowedSymbols.includes(a.symbol))
+        : SUPPORTED_ASSETS,
+    [allowedSymbols]
+  )
+
+  const buildInitialWeights = useCallback((symbols: string[]): WeightAllocation[] => {
+    if (symbols.length === 0) return []
+
+    const even = Math.floor(10000 / symbols.length)
+    return symbols.map((symbol, i) => ({
+      symbol,
+      basisPoints: i === 0 ? 10000 - (symbols.length - 1) * even : even,
+    }))
+  }, [])
+
+  const [allocations, setAllocations] = useState<WeightAllocation[]>(() =>
+    buildInitialWeights(assets.map((a) => a.symbol))
+  )
+
+  useEffect(() => {
+    const next = buildInitialWeights(assets.map((a) => a.symbol))
+    setAllocations(next)
+    onWeightsChangeRef.current?.(next, isWeightValid(next))
+  }, [assets, buildInitialWeights])
 
   const total = computeTotalWeight(allocations)
   const valid = isWeightValid(allocations)
@@ -59,6 +81,14 @@ export default function WeightBuilder({
 
   return (
     <div className="space-y-5">
+      {assets.length === 0 ? (
+        <div className="rounded-xl border border-border bg-muted/20 p-4">
+          <p className="font-mono text-xs text-muted-foreground">
+            Select at least 2 assets to build your index.
+          </p>
+        </div>
+      ) : null}
+
       {/* Asset sliders */}
       <div className="space-y-4">
         {assets.map((asset) => {

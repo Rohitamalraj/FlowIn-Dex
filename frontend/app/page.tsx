@@ -4,8 +4,6 @@ import RotatingTextAccent from "@/components/rotating-text-accent"
 import Footer from "@/components/footer"
 import HeroTextOverlay from "@/components/hero-text-overlay"
 import Link from "next/link"
-import DuelCard from "@/components/duel/duel-card"
-import { getOpenDuels } from "@/lib/mock-duels"
 import { ArrowUpRight, Lock, Shield, Eye, Zap, Users, TrendingUp } from "lucide-react"
 
 const STATS = [
@@ -43,7 +41,6 @@ const FEATURES = [
 ]
 
 export default function Home() {
-  const openDuels = getOpenDuels().slice(0, 3)
 
   return (
     <div className="w-full min-h-screen py-0 bg-background">
@@ -155,30 +152,6 @@ export default function Home() {
                 <h3 className="font-mono font-semibold text-foreground text-sm mb-2">{feat.title}</h3>
                 <p className="font-mono text-xs text-muted-foreground leading-relaxed">{feat.desc}</p>
               </div>
-            ))}
-          </div>
-        </section>
-
-        {/* Live Duels Preview */}
-        <section className="mx-4 md:mx-0 mb-8">
-          <div className="flex items-center justify-between mb-6">
-            <div>
-              <h2 className="font-bold text-foreground text-xl" style={{ fontFamily: "var(--font-montserrat)" }}>
-                Open Duels
-              </h2>
-              <p className="font-mono text-xs text-muted-foreground mt-1">Join a live duel and submit your encrypted allocation.</p>
-            </div>
-            <Link
-              href="/join-duel"
-              className="font-mono text-xs text-primary hover:text-primary/80 flex items-center gap-1 transition-colors"
-            >
-              Browse all <ArrowUpRight className="h-3 w-3" />
-            </Link>
-          </div>
-
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-            {openDuels.map((duel) => (
-              <DuelCard key={duel.id} duel={duel} />
             ))}
           </div>
         </section>

@@ -57,10 +57,10 @@ export function getStatusLabel(status: DuelStatus): string {
 export function getStatusDescription(status: DuelStatus): string {
   const desc: Record<DuelStatus, string> = {
     OPEN:      "Waiting for an opponent to join.",
-    JOINED:    "Opponent joined. Waiting for duel to start.",
-    LOCKED:    "Strategies are locked. Evaluation window running.",
-    SETTLING:  "Encrypted PnL computation in progress.",
-    SETTLED:   "Winner disclosed. Strategies remain confidential.",
+    JOINED:    "Opponent joined and portfolio submitted.",
+    LOCKED:    "Duel active. Both strategies are now revealed.",
+    SETTLING:  "Settlement is being computed from Pyth prices.",
+    SETTLED:   "Winner determined and payout ready.",
     CANCELLED: "Duel was cancelled.",
   }
   return desc[status] ?? ""
@@ -93,7 +93,7 @@ export function percentToBasisPoints(percent: number): number {
 // ─── Entry Amount ─────────────────────────────────────────────────────────────
 
 export function formatEth(amount: number): string {
-  return `${amount.toFixed(3)} ETH`
+  return `${amount.toFixed(3)} FLOW`
 }
 
 export function formatUsd(amount: number): string {

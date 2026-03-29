@@ -32,10 +32,10 @@ export default function DuelCard({ duel, onJoin, compact = false }: DuelCardProp
       <div className="flex items-start justify-between gap-3 mb-4">
         <div className="flex items-center gap-2 min-w-0">
           <StatusBadge status={duel.status} size="sm" />
-          <span className="text-muted-foreground font-mono text-xs truncate">#{duel.id}</span>
+          <span className="text-muted-foreground font-mono text-xs truncate">#{duel.id.substring(0, 10)}</span>
         </div>
         <Link
-          href={`/duel/${duel.id}`}
+          href={`/duel/${encodeURIComponent(duel.id)}`}
           className="shrink-0 opacity-0 group-hover:opacity-100 transition-opacity text-muted-foreground hover:text-primary"
         >
           <ArrowUpRight className="h-4 w-4" />

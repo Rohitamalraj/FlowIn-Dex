@@ -2,11 +2,11 @@ import { CheckCircle2, Circle, Loader2 } from "lucide-react"
 import { DuelStatus } from "@/lib/duel-types"
 
 const STEPS: { status: DuelStatus; label: string; desc: string }[] = [
-  { status: DuelStatus.OPEN,      label: "Duel Created",     desc: "Creator set parameters & submitted encrypted allocation" },
-  { status: DuelStatus.JOINED,    label: "Opponent Joined",  desc: "Challenger joined & submitted encrypted allocation"       },
-  { status: DuelStatus.LOCKED,    label: "Locked",           desc: "Strategies immutable; evaluation window started"          },
-  { status: DuelStatus.SETTLING,  label: "Settling",         desc: "Encrypted PnL computation running on fhEVM"               },
-  { status: DuelStatus.SETTLED,   label: "Settled",          desc: "Winner revealed; individual strategies remain private"    },
+  { status: DuelStatus.OPEN,      label: "Duel Created",     desc: "First player posted stake, duration, tokens, and index weights" },
+  { status: DuelStatus.JOINED,    label: "Second Player Joined",  desc: "Second player posted stake and built a competing index"         },
+  { status: DuelStatus.LOCKED,    label: "Duel Active",      desc: "Start time reached, both strategies revealed, versus live"  },
+  { status: DuelStatus.SETTLING,  label: "Settling",         desc: "Duration ended; settlement determines the better index"     },
+  { status: DuelStatus.SETTLED,   label: "Settled",          desc: "Winner determined and payout can be executed"              },
 ]
 
 const statusOrder: Record<DuelStatus, number> = {
@@ -29,7 +29,7 @@ export default function Timeline({ currentStatus }: TimelineProps) {
     return (
       <div className="rounded-xl border border-red-400/20 bg-red-400/5 p-4 text-center">
         <p className="font-mono text-sm text-red-400">Duel Cancelled</p>
-        <p className="font-mono text-xs text-muted-foreground mt-1">No opponent joined before timeout.</p>
+        <p className="font-mono text-xs text-muted-foreground mt-1">No second wallet joined before timeout.</p>
       </div>
     )
   }
