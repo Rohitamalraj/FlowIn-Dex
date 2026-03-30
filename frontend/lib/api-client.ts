@@ -17,7 +17,13 @@ async function apiFetch<T>(
   })
   const json = await res.json()
   if (!res.ok) {
-    throw new Error(json?.message ?? json?.error ?? `API error ${res.status}`)
+    const error = new Error(json?.message ?? json?.error ?? `API error ${res.status}`) as Error & {
+      status?: number
+      details?: unknown
+    }
+    error.status = res.status
+    error.details = json
+    throw error
   }
   return json as T
 }
@@ -61,6 +67,7 @@ export interface DuelRecord {
   duelId: string
   duelAddress: string
   createdAt: number | null
+  escrowBalance?: string
   state: string
   stateCode: number
   creator: string

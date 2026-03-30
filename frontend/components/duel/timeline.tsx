@@ -41,8 +41,9 @@ export default function Timeline({ currentStatus }: TimelineProps) {
 
       <div className="space-y-6">
         {STEPS.map((step, i) => {
-          const isDone    = i < currentIndex
-          const isCurrent = i === currentIndex
+          const isLastStep = i === STEPS.length - 1
+          const isDone    = i < currentIndex || (i === currentIndex && isLastStep)
+          const isCurrent = i === currentIndex && !isLastStep
           const isPending = i > currentIndex
 
           return (

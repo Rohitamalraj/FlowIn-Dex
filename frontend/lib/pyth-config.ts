@@ -1,10 +1,11 @@
 /**
- * Pyth Network Price Feed IDs for Flow EVM Testnet
+ * Pyth Network Price Feed IDs
  * Source: https://pyth.network/developers/price-feed-ids
  * These are the canonical Pyth Price IDs (bytes32 hex strings) used for
  * on-chain price lookups via the PythConsumer contract.
  */
 export const PYTH_PRICE_IDS: Record<string, `0x${string}`> = {
+  // ── Existing assets ──────────────────────────────────────────────────────
   BTC:  "0xe62df6c8b4a85fe1a67db44dc12de5db330f7ac66b72dc658afedf0f4a415b43",
   ETH:  "0xff61491a931112ddf1bd8147cd1b641375f79f5825126d665480874634fd0ace",
   SOL:  "0xef0d8b6fda2ceba41da15d4095d1da392a0d2f8ed0c6c7bc0f4cfac8c280b56d",
@@ -20,6 +21,22 @@ export const PYTH_PRICE_IDS: Record<string, `0x${string}`> = {
   DAI:  "0xb0948a5e5313200c632b51bb5ca32f6de0d36e9950a942d19751e833f70dabfd",
   LINK: "0x8ac0c70fff57e9aefdf5edf44b51d62c2d433653cbb2cf5cc06bb115af04d221",
   AVAX: "0x93da3352f9f1d105fdfe4971cfa80e9dd777bfc5d0f683ebb6e1294b92137bb7",
+  // ── New assets ───────────────────────────────────────────────────────────
+  DOGE: "0xdcef50dd0a4cd2dcc17e45df1676dcb336a11a61c69df7a0299b0150c672d25c",
+  XRP:  "0xec5d399846a9209f3fe5881d70aae9268c94339ff9817e8d18ff19fa05eea1c8",
+  ADA:  "0x2a01deaec9e51a579277b34b122399984d0bbf57e2458a7e42fecd2829867a0d",
+  LTC:  "0x6e3f3fa8253588df9326580180233eb791e03b443a3ba7a1d892e73874e19a54",
+  DOT:  "0xca3eed9b267293f6595901c734c7525ce8ef49adafe8284606ceb307afa2ca5b",
+  ATOM: "0xb00b60f88b03a6a625a8d1c048c3f66653edf217439983d037e7222c4e612819",
+  NEAR: "0xc415de8d2eba7db216527dff4b60e8f3a5311c740dadb233e13e12547e226750",
+  APT:  "0x03ae4db29ed4ae33d323568895aa00337e658e348b37509f5372ae51f0af00d5",
+  SUI:  "0x23d7315113f5b1d3ba7a83604c44b94d79f4fd69af77f804fc7f920a6dc65744",
+  UNI:  "0x78d185a741d07edb3412b09008b7c5cfb9bbbd7d568bf00ba737b456ba171501",
+  AAVE: "0x2b9ab1e972a281585084148ba1389800799bd4be63b957507db1349314e47445",
+  PEPE: "0xd69731a2e74ac1ce884fc3890f7ee324b6deb66147055249568869ed700882e4",
+  SHIB: "0xf0d57deca57b3da2fe63a493f4c25925fdfd8edf834b20f93e1f84dbd1504d4a",
+  WIF:  "0x4ca4beeca86f0d164160323817a4e42b10010a724c2217c6ee41b54cd4cc61fc",
+  TIA:  "0x09f7c1d7dfbb7df2b8fe3d3d87ee94a2259d212da4f30c1f0540d066dfa44723",
 }
 
 /**
@@ -29,6 +46,7 @@ export const PYTH_PRICE_IDS: Record<string, `0x${string}`> = {
  * authoritative on-chain identifier.
  */
 export const ASSET_CONTRACT_ADDRESSES: Record<string, `0x${string}`> = {
+  // ── Existing assets ──────────────────────────────────────────────────────
   BTC:  "0x0000000000000000000000000000000000000001",
   ETH:  "0x0000000000000000000000000000000000000002",
   SOL:  "0x0000000000000000000000000000000000000003",
@@ -42,6 +60,22 @@ export const ASSET_CONTRACT_ADDRESSES: Record<string, `0x${string}`> = {
   USDC: "0x000000000000000000000000000000000000000b",
   USDT: "0x000000000000000000000000000000000000000c",
   DAI:  "0x000000000000000000000000000000000000000d",
+  // ── New assets ───────────────────────────────────────────────────────────
+  DOGE: "0x000000000000000000000000000000000000000e",
+  XRP:  "0x000000000000000000000000000000000000000f",
+  ADA:  "0x0000000000000000000000000000000000000010",
+  LTC:  "0x0000000000000000000000000000000000000011",
+  DOT:  "0x0000000000000000000000000000000000000012",
+  ATOM: "0x0000000000000000000000000000000000000013",
+  NEAR: "0x0000000000000000000000000000000000000014",
+  APT:  "0x0000000000000000000000000000000000000015",
+  SUI:  "0x0000000000000000000000000000000000000016",
+  UNI:  "0x0000000000000000000000000000000000000017",
+  AAVE: "0x0000000000000000000000000000000000000018",
+  PEPE: "0x0000000000000000000000000000000000000019",
+  SHIB: "0x000000000000000000000000000000000000001a",
+  WIF:  "0x000000000000000000000000000000000000001b",
+  TIA:  "0x000000000000000000000000000000000000001c",
 }
 
 /**
@@ -49,12 +83,22 @@ export const ASSET_CONTRACT_ADDRESSES: Record<string, `0x${string}`> = {
  * Used when submitting portfolio to the DuelFactory contract.
  */
 export const ASSET_TIERS: Record<string, number> = {
+  // ── Tier 0: Blue-chip assets ─────────────────────────────────────────────
   BTC:  0,
   ETH:  0,
   SOL:  0,
   BNB:  0,
   LINK: 0,
   AVAX: 0,
+  DOGE: 0,
+  XRP:  0,
+  ADA:  0,
+  LTC:  0,
+  DOT:  0,
+  ATOM: 0,
+  NEAR: 0,
+  APT:  0,
+  // ── Tier 1: Altcoins / newer assets ─────────────────────────────────────
   STRK: 1,
   ARB:  1,
   OP:   1,
@@ -62,6 +106,13 @@ export const ASSET_TIERS: Record<string, number> = {
   USDC: 1,
   USDT: 1,
   DAI:  1,
+  SUI:  1,
+  UNI:  1,
+  AAVE: 1,
+  PEPE: 1,
+  SHIB: 1,
+  WIF:  1,
+  TIA:  1,
 }
 
 export function getTierWeightTotals(symbols: string[], weights: number[]): { tier1: number; tier2: number } {

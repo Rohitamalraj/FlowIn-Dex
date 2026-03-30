@@ -6,6 +6,24 @@ import { ethers } from 'ethers';
 export const duelRoutes = Router();
 
 const ZERO_ADDRESS = '0x0000000000000000000000000000000000000000';
+
+/**
+ * Concurrency-limited map — processes at most `concurrency` items at once.
+ * Avoids blasting the RPC node with too many simultaneous eth_call requests.
+ */
+async function pMap<T, R>(items: T[], fn: (item: T) => Promise<R>, concurrency = 3): Promise<R[]> {
+  const results: R[] = new Array(items.length);
+  let index = 0;
+  async function worker() {
+    while (index < items.length) {
+      const i = index++;
+      results[i] = await fn(items[i]);
+    }
+  }
+  const workers = Array.from({ length: Math.min(concurrency, items.length) }, worker);
+  await Promise.all(workers);
+  return results;
+}
 const PRICE_SCALE = 100_000_000;
 
 function normalizeSymbol(symbol: string): string {
@@ -63,7 +81,6 @@ async function autoFinalizeDuel(service: any, duelAddress: string) {
   const now = Math.floor(Date.now() / 1000);
   let info = await service.getDuelInfo(duelAddress);
   let settleResult: { txHash: string; method: string } | null = null;
-  let payoutResult: { txHash: string; method: string } | null = null;
 
   const hasOpponent = Boolean(info?.opponent && info.opponent !== ZERO_ADDRESS);
   const hasEnded = Number(info?.endTime || 0) > 0 && now >= Number(info.endTime);
@@ -81,17 +98,13 @@ async function autoFinalizeDuel(service: any, duelAddress: string) {
   }
 
   const escrowBalance = await service.getContractBalance(duelAddress);
-  if (info?.settled && escrowBalance > 0n) {
-    payoutResult = await service.executePayoutOrSplitTie(duelAddress, info.winner || null);
-    info = await service.getDuelInfo(duelAddress);
-  }
 
   return {
     info,
     hasOpponent,
     hasEnded,
     settleResult,
-    payoutResult,
+    escrowBalance,
   };
 }
 
@@ -105,14 +118,12 @@ duelRoutes.get('/', async (req: Request, res: Response) => {
     const service = getOnChainDuelService();
     const duels = await service.getAllDuels(Number(offset), Number(limit));
 
-    const fullDuels = await Promise.all(
-      duels.map(async (d: any) => {
+    const fullDuels = await pMap(
+      duels,
+      async (d: any) => {
         try {
-          const [info, createdAt] = await Promise.all([
-            service.getDuelInfo(d.duelAddress),
-            service.getDuelCreatedAt(d.duelId),
-          ]);
-
+          const info = await service.getDuelInfo(d.duelAddress);
+          const createdAt = await service.getDuelCreatedAt(d.duelId);
           return {
             duelId: d.duelId,
             duelAddress: d.duelAddress,
@@ -122,7 +133,8 @@ duelRoutes.get('/', async (req: Request, res: Response) => {
         } catch {
           return null;
         }
-      })
+      },
+      3
     );
 
     const filtered = fullDuels.filter((d) => d !== null);
@@ -515,14 +527,12 @@ duelRoutes.get('/user/:address/duels', async (req: Request, res: Response) => {
     const service = getOnChainDuelService();
     const duels = await service.getUserDuels(address, Number(offset), Number(limit));
 
-    const fullDuels = await Promise.all(
-      duels.map(async (d: any) => {
+    const fullDuels = await pMap(
+      duels,
+      async (d: any) => {
         try {
-          const [info, createdAt] = await Promise.all([
-            service.getDuelInfo(d.duelAddress),
-            service.getDuelCreatedAt(d.duelId),
-          ]);
-
+          const info = await service.getDuelInfo(d.duelAddress);
+          const createdAt = await service.getDuelCreatedAt(d.duelId);
           return {
             duelId: d.duelId,
             duelAddress: d.duelAddress,
@@ -532,7 +542,8 @@ duelRoutes.get('/user/:address/duels', async (req: Request, res: Response) => {
         } catch {
           return null;
         }
-      })
+      },
+      3
     );
 
     const filtered = fullDuels.filter((d) => d !== null);
@@ -553,7 +564,7 @@ duelRoutes.get('/user/:address/duels', async (req: Request, res: Response) => {
 
 /**
  * POST /api/duels/:duelId/auto-finalize
- * Automatically settle and payout/split an ended duel.
+ * Automatically settle an ended duel (winner can claim reward manually).
  */
 duelRoutes.post('/:duelId/auto-finalize', async (req: Request, res: Response) => {
   try {
@@ -575,22 +586,37 @@ duelRoutes.post('/:duelId/auto-finalize', async (req: Request, res: Response) =>
       });
     }
 
-    const finalized = await autoFinalizeDuel(service, duelAddress);
+    let finalized: Awaited<ReturnType<typeof autoFinalizeDuel>>;
+    try {
+      finalized = await autoFinalizeDuel(service, duelAddress);
+    } catch (finalizeErr: any) {
+      const message = String(finalizeErr?.shortMessage || finalizeErr?.message || 'Failed to auto-finalize duel');
+      if (/not participant/i.test(message)) {
+        return res.status(409).json({
+          error: 'Backend signer cannot settle this duel',
+          message:
+            'Configured FLOW_EVM_PRIVATE_KEY is not one of the duel participants. Settlement requires a participant signer for this contract.',
+        });
+      }
+      throw finalizeErr;
+    }
+
     const createdAt = await service.getDuelCreatedAt(duelId);
 
     res.json({
       success: true,
       duelId,
       duelAddress,
-      autoFinalized: Boolean(finalized.settleResult || finalized.payoutResult),
+      autoFinalized: Boolean(finalized.settleResult),
       settleTxHash: finalized.settleResult?.txHash ?? null,
       settleMethod: finalized.settleResult?.method ?? null,
-      payoutTxHash: finalized.payoutResult?.txHash ?? null,
-      payoutMethod: finalized.payoutResult?.method ?? null,
+      payoutTxHash: null,
+      payoutMethod: null,
       duel: {
         duelId,
         duelAddress,
         createdAt,
+        escrowBalance: finalized.escrowBalance.toString(),
         ...finalized.info,
       },
     });
@@ -618,9 +644,10 @@ duelRoutes.get('/:duelId', async (req: Request, res: Response) => {
       });
     }
 
-    const [info, createdAt] = await Promise.all([
+    const [info, createdAt, escrowBalance] = await Promise.all([
       service.getDuelInfo(duelAddress),
       service.getDuelCreatedAt(duelId),
+      service.getContractBalance(duelAddress),
     ]);
 
     res.json({
@@ -629,6 +656,7 @@ duelRoutes.get('/:duelId', async (req: Request, res: Response) => {
         duelId,
         duelAddress,
         createdAt,
+        escrowBalance: escrowBalance.toString(),
         ...info,
       },
     });

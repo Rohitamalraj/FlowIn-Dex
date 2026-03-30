@@ -37,6 +37,30 @@ export class OnChainDuelService {
   private factoryAddress: string;
   private factoryContract: ethers.Contract;
 
+  /** Permanent cache: duelId → createdAt timestamp (never changes) */
+  private createdAtCache = new Map<string, number>();
+  /** Permanent cache: duelAddress → creator portfolio (immutable once submitted) */
+  private creatorPortfolioCache = new Map<string, any>();
+  /** Permanent cache: duelAddress → opponent portfolio (immutable once submitted) */
+  private opponentPortfolioCache = new Map<string, any>();
+
+  /** Retry a fn up to maxAttempts on TIMEOUT or rate-limit errors */
+  private async withRetry<T>(fn: () => Promise<T>, maxAttempts = 3): Promise<T> {
+    let lastErr: any;
+    for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+      try {
+        return await fn();
+      } catch (err: any) {
+        lastErr = err;
+        const msg = String(err?.code || err?.message || '');
+        const isTransient = /TIMEOUT|timeout|-32007|rate.limit/i.test(msg);
+        if (!isTransient || attempt === maxAttempts) throw err;
+        await new Promise(r => setTimeout(r, 300 * attempt));
+      }
+    }
+    throw lastErr;
+  }
+
   constructor(rpcUrl: string, factoryAddress: string, privateKey?: string) {
     this.provider = new ethers.JsonRpcProvider(rpcUrl);
     this.factoryAddress = factoryAddress;
@@ -230,11 +254,9 @@ export class OnChainDuelService {
   async getDuelInfo(duelAddress: string): Promise<any> {
     try {
       const duelContract = new ethers.Contract(duelAddress, DUEL_ABI, this.provider);
-      const [info, creatorPort, opponentPort] = await Promise.all([
-        duelContract.getDuelInfo(),
-        duelContract.getCreatorPortfolio().catch(() => null),
-        duelContract.getOpponentPortfolio().catch(() => null)
-      ]);
+      const info = await this.withRetry(() => duelContract.getDuelInfo());
+      const creatorPort = await this.withRetry(() => duelContract.getCreatorPortfolio()).catch(() => null);
+      const opponentPort = await this.withRetry(() => duelContract.getOpponentPortfolio()).catch(() => null);
 
       const stateCode = Number(info[0]);
       const startTime = Number(info[3]);
@@ -267,14 +289,16 @@ export class OnChainDuelService {
   }
 
   /**
-   * Get creator's portfolio
+   * Get creator's portfolio (cached permanently once submitted)
    */
   async getCreatorPortfolio(duelAddress: string): Promise<any> {
+    const cached = this.creatorPortfolioCache.get(duelAddress);
+    if (cached) return cached;
     try {
       const duelContract = new ethers.Contract(duelAddress, DUEL_ABI, this.provider);
-      const portfolio = await duelContract.getCreatorPortfolio();
+      const portfolio = await this.withRetry(() => duelContract.getCreatorPortfolio());
 
-      return {
+      const result = {
         participant: portfolio[0],
         symbols: portfolio[1],
         priceIds: [], // deprecated
@@ -282,6 +306,8 @@ export class OnChainDuelService {
         submitted: portfolio[3],
         return: "0",
       };
+      if (result.submitted) this.creatorPortfolioCache.set(duelAddress, result);
+      return result;
     } catch (error) {
       console.error("Error fetching creator portfolio:", error);
       throw error;
@@ -289,14 +315,16 @@ export class OnChainDuelService {
   }
 
   /**
-   * Get opponent's portfolio
+   * Get opponent's portfolio (cached permanently once submitted)
    */
   async getOpponentPortfolio(duelAddress: string): Promise<any> {
+    const cached = this.opponentPortfolioCache.get(duelAddress);
+    if (cached) return cached;
     try {
       const duelContract = new ethers.Contract(duelAddress, DUEL_ABI, this.provider);
-      const portfolio = await duelContract.getOpponentPortfolio();
+      const portfolio = await this.withRetry(() => duelContract.getOpponentPortfolio());
 
-      return {
+      const result = {
         participant: portfolio[0],
         symbols: portfolio[1],
         priceIds: [], // deprecated
@@ -304,6 +332,8 @@ export class OnChainDuelService {
         submitted: portfolio[3],
         return: "0",
       };
+      if (result.submitted) this.opponentPortfolioCache.set(duelAddress, result);
+      return result;
     } catch (error) {
       console.error("Error fetching opponent portfolio:", error);
       throw error;
@@ -545,18 +575,24 @@ export class OnChainDuelService {
   }
 
   /**
-   * Fetch duel creation timestamp from DuelCreated event block.
+   * Fetch duel creation timestamp from DuelCreated event block (cached permanently).
    */
   async getDuelCreatedAt(duelId: string): Promise<number | null> {
+    const cached = this.createdAtCache.get(duelId);
+    if (cached !== undefined) return cached;
     try {
       const filter = this.factoryContract.filters.DuelCreated(duelId);
-      const logs = await this.factoryContract.queryFilter(filter, 0, "latest");
+      const currentBlock = await this.provider.getBlockNumber();
+      const fromBlock = Math.max(0, currentBlock - 500_000);
+      const logs = await this.factoryContract.queryFilter(filter, fromBlock, "latest");
       if (!logs.length) {
         return null;
       }
 
       const block = await this.provider.getBlock(logs[0].blockNumber);
-      return block ? Number(block.timestamp) : null;
+      const ts = block ? Number(block.timestamp) : null;
+      if (ts) this.createdAtCache.set(duelId, ts);
+      return ts;
     } catch {
       return null;
     }

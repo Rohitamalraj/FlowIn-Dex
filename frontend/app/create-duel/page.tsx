@@ -17,6 +17,7 @@ import {
 import { ASSET_TIERS, buildContractAssetArrays, getTierWeightTotals } from "@/lib/pyth-config"
 import { FACTORY_ABI, DUEL_ABI } from "@/lib/contracts"
 import { CheckCircle2, Loader2, Lock, ArrowRight, ArrowLeft, Plus, Minus, X, Shuffle, Zap, Wallet } from "lucide-react"
+import { CHAIN_META } from "@/lib/chains-config"
 
 // ─── Constants ─────────────────────────────────────────────────────────────────
 const DURATION_OPTIONS = [
@@ -45,6 +46,21 @@ const ASSET_COLORS: Record<string, string> = {
   USDC: "#2775CA",
   USDT: "#26A17B",
   DAI:  "#F5AC37",
+  DOGE: "#C2A633",
+  XRP:  "#00AAE4",
+  ADA:  "#0D47A1",
+  LTC:  "#BFBBBB",
+  DOT:  "#E6007A",
+  ATOM: "#6F7390",
+  NEAR: "#00C08B",
+  APT:  "#00BFA5",
+  SUI:  "#6FBCF0",
+  UNI:  "#FF007A",
+  AAVE: "#B6509E",
+  PEPE: "#48A33C",
+  SHIB: "#FF6D00",
+  WIF:  "#C17E21",
+  TIA:  "#7B2FBE",
 }
 
 // Node sizes
@@ -155,6 +171,7 @@ export default function CreateDuelPage() {
   })
 
   const [step, setStep]               = useState(1)
+  const [selectedChainId, setSelectedChainId] = useState(FLOW_EVM_TESTNET_CHAIN_ID)
   const [duration, setDuration]       = useState(86400)
   const [entryAmountInput, setEntryAmountInput] = useState("0.05")
   const [nodes, setNodes]             = useState<FlowNode[]>([])

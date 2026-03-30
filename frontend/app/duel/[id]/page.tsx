@@ -18,7 +18,6 @@ import {
   formatTimeAgo,
 } from "@/lib/duel-utils"
 import {
-  apiAutoFinalizeDuel,
   apiGetBatchPricesAt,
   apiGetCreatorPortfolio,
   apiGetDuelById,
@@ -96,9 +95,6 @@ export default function DuelDetailPage() {
   const [isSettlingAction, setIsSettlingAction] = useState(false)
   const [isPayoutAction, setIsPayoutAction] = useState(false)
   const [isSplitAction, setIsSplitAction] = useState(false)
-  const [isAutoFinalizing, setIsAutoFinalizing] = useState(false)
-  const [autoFinalizeBlocked, setAutoFinalizeBlocked] = useState(false)
-  const [lastAutoFinalizeAttemptSec, setLastAutoFinalizeAttemptSec] = useState(0)
   const [actionError, setActionError] = useState<string | null>(null)
   const [chartData, setChartData] = useState<ChartPoint[]>([])
   const [clockSec, setClockSec] = useState(() => Math.floor(Date.now() / 1000))
@@ -110,11 +106,6 @@ export default function DuelDetailPage() {
 
     return () => window.clearInterval(timer)
   }, [])
-
-  useEffect(() => {
-    setAutoFinalizeBlocked(false)
-    setLastAutoFinalizeAttemptSec(0)
-  }, [duelKey])
 
   const { data, isLoading, refetch } = useQuery({
     queryKey: ["duel", duelKey],
@@ -201,7 +192,7 @@ export default function DuelDetailPage() {
       nowSec < duelEndTimestampSec
   )
 
-  const { chainId, isConnected } = useAccount()
+  const { address, chainId, isConnected } = useAccount()
   const { switchChainAsync, isPending: isSwitchingChain } = useSwitchChain()
   const { writeContractAsync } = useWriteContract()
   const publicClient = usePublicClient({ chainId: FLOW_EVM_TESTNET_CHAIN_ID })
@@ -252,6 +243,18 @@ export default function DuelDetailPage() {
     refetchIntervalInBackground: isDuelWindowActive,
   })
 
+  const endPricesQuery = useQuery({
+    queryKey: ["duel-end-prices", duelAddress, duelEndTimestampSec, priceSymbolsKey],
+    queryFn: () => apiGetBatchPricesAt(priceSymbols, duelEndTimestampSec as number),
+    enabled:
+      Boolean(duelAddress) &&
+      canRevealStrategies &&
+      priceSymbols.length > 0 &&
+      Boolean(duelEndTimestampSec) &&
+      hasDuelEnded,
+    staleTime: Infinity,
+  })
+
   useEffect(() => {
     if (!duelAddress || !canRevealStrategies) return
     if (!hasDuelEnded) return
@@ -262,50 +265,6 @@ export default function DuelDetailPage() {
       duelEndTimestampSec,
     })
   }, [duelAddress, canRevealStrategies, hasDuelEnded, duelEndTimestampSec, duel?.id])
-
-  useEffect(() => {
-    if (!duel?.id || !duelAddress) return
-    if (!hasDuelEnded || isSettled || isCancelled) return
-    if (isAutoFinalizing || autoFinalizeBlocked) return
-    if (clockSec - lastAutoFinalizeAttemptSec < 8) return
-
-    setLastAutoFinalizeAttemptSec(clockSec)
-    setIsAutoFinalizing(true)
-
-    ;(async () => {
-      try {
-        console.log("[DuelDetail] Attempting auto-finalize", {
-          duelId: duel.id,
-          duelAddress,
-        })
-
-        const result = await apiAutoFinalizeDuel(duel.id)
-        console.log("[DuelDetail] Auto-finalize completed", result)
-        await refetch()
-      } catch (err: any) {
-        const message = err?.message || "Auto-finalize failed"
-        console.warn("[DuelDetail] Auto-finalize failed", message)
-
-        if (/signer not configured|private key/i.test(message)) {
-          setAutoFinalizeBlocked(true)
-          setActionError("Automatic finalize is disabled because backend signer is not configured.")
-        }
-      } finally {
-        setIsAutoFinalizing(false)
-      }
-    })()
-  }, [
-    duel?.id,
-    duelAddress,
-    hasDuelEnded,
-    isSettled,
-    isCancelled,
-    isAutoFinalizing,
-    autoFinalizeBlocked,
-    clockSec,
-    lastAutoFinalizeAttemptSec,
-    refetch,
-  ])
 
   useEffect(() => {
     setChartData([])
@@ -373,6 +332,12 @@ export default function DuelDetailPage() {
     priceSymbols,
   ])
 
+  useEffect(() => {
+    if (isSettled || isCancelled) {
+      setActionError(null)
+    }
+  }, [isSettled, isCancelled])
+
   if (isLoading) {
     return (
       <AppShell>
@@ -399,6 +364,36 @@ export default function DuelDetailPage() {
 
   const canSettleCheck = isLocked && duel.endTime ? Math.floor(duel.endTime.getTime() / 1000) <= nowSec : false
   const isTie = isSettled && !duel.winnerAddress
+  let escrowBalanceWei = BigInt(0)
+  try {
+    escrowBalanceWei = BigInt(String((rawDuel as any).escrowBalance ?? "0"))
+  } catch {
+    escrowBalanceWei = BigInt(0)
+  }
+
+  const viewerAddressLower = address?.toLowerCase()
+  const firstPlayerLower = duel.creator.address.toLowerCase()
+  const secondPlayerLower = duel.opponent?.address?.toLowerCase()
+  const isViewerParticipant = Boolean(
+    viewerAddressLower &&
+      (viewerAddressLower === firstPlayerLower || (secondPlayerLower && viewerAddressLower === secondPlayerLower))
+  )
+  const winnerAddressLower = duel.winnerAddress?.toLowerCase()
+  const isConnectedWinner = Boolean(
+    isSettled &&
+      isViewerParticipant &&
+      winnerAddressLower &&
+      viewerAddressLower === winnerAddressLower
+  )
+  const isConnectedLoser = Boolean(
+    isSettled &&
+      isViewerParticipant &&
+      winnerAddressLower &&
+      viewerAddressLower &&
+      viewerAddressLower !== winnerAddressLower
+  )
+  const isRewardClaimable = isSettled && escrowBalanceWei > BigInt(0)
+  const canShowSettleAction = hasDuelEnded && canSettleCheck && !isSettled && !isSettling && !isCancelled && isViewerParticipant
 
   const handleSettle = async () => {
     if (!duelAddress || !isConnected || !publicClient) {
@@ -498,6 +493,16 @@ export default function DuelDetailPage() {
       return
     }
 
+    if (!isConnectedWinner) {
+      setActionError("Only the winner wallet can collect reward.")
+      return
+    }
+
+    if (!isRewardClaimable) {
+      setActionError("Reward already collected.")
+      return
+    }
+
     if (chainId !== FLOW_EVM_TESTNET_CHAIN_ID) {
       if (!switchChainAsync) {
         setActionError(`Switch wallet to ${FLOW_EVM_TESTNET_NAME} (chain ${FLOW_EVM_TESTNET_CHAIN_ID}).`)
@@ -549,6 +554,21 @@ export default function DuelDetailPage() {
       return
     }
 
+    if (!isTie) {
+      setActionError("Split payout is only available for tied duels.")
+      return
+    }
+
+    if (!isViewerParticipant) {
+      setActionError("Only duel participants can claim tie split rewards.")
+      return
+    }
+
+    if (!isRewardClaimable) {
+      setActionError("Tie rewards already claimed.")
+      return
+    }
+
     setIsSplitAction(true)
     setActionError(null)
 
@@ -591,9 +611,13 @@ export default function DuelDetailPage() {
       .map(([symbol, value]) => [symbol, value.price])
   )
 
+  const displayPriceMap = hasDuelEnded
+    ? (endPricesQuery.data?.prices ?? livePriceMap)
+    : livePriceMap
+
   const tokenRows = tokenUniverseSymbols.map((symbol) => {
     const meta = SUPPORTED_ASSETS.find((a) => a.symbol === symbol)
-    const live = livePriceMap[symbol]?.price
+    const live = displayPriceMap[symbol]?.price
     const start = startPriceMap[symbol]?.price
     const duelChangePct =
       typeof live === "number" && typeof start === "number" && start > 0
@@ -610,13 +634,13 @@ export default function DuelDetailPage() {
   })
 
   const creatorIndexValue = creatorPortfolio
-    ? computeIndexValue(creatorPortfolio.symbols, creatorPortfolio.weights, livePriceMap, baselinePriceMap)
+    ? computeIndexValue(creatorPortfolio.symbols, creatorPortfolio.weights, displayPriceMap, baselinePriceMap)
     : chartData.length
       ? chartData[chartData.length - 1].creator
       : 100
 
   const opponentIndexValue = opponentPortfolio
-    ? computeIndexValue(opponentPortfolio.symbols, opponentPortfolio.weights, livePriceMap, baselinePriceMap)
+    ? computeIndexValue(opponentPortfolio.symbols, opponentPortfolio.weights, displayPriceMap, baselinePriceMap)
     : chartData.length
       ? chartData[chartData.length - 1].opponent
       : 100
@@ -668,14 +692,7 @@ export default function DuelDetailPage() {
               </div>
             )}
 
-            {(isAutoFinalizing || (hasDuelEnded && !isSettled && !isCancelled)) && (
-              <div className="rounded-2xl border border-primary/30 bg-primary/10 px-5 py-3 text-center min-w-[170px]">
-                <p className="font-mono text-xs text-muted-foreground mb-1">Post-Duel</p>
-                <p className="font-mono text-sm font-bold text-primary">Auto-finalizing...</p>
-              </div>
-            )}
-
-            {autoFinalizeBlocked && canSettleCheck && (
+            {canShowSettleAction && (
               <button
                 onClick={handleSettle}
                 disabled={isSettlingAction || isSwitchingChain}
@@ -685,17 +702,17 @@ export default function DuelDetailPage() {
               </button>
             )}
 
-            {autoFinalizeBlocked && isSettled && !isTie && (
+            {isSettled && !isTie && isConnectedWinner && isRewardClaimable && (
               <button
                 onClick={handlePayout}
                 disabled={isPayoutAction || isSwitchingChain}
                 className="rounded-2xl border border-primary/50 bg-primary/20 text-primary px-5 py-3 font-mono font-bold hover:bg-primary/30 disabled:opacity-50"
               >
-                {isSwitchingChain ? "Switching..." : isPayoutAction ? "Executing..." : "Execute Payout"}
+                {isSwitchingChain ? "Switching..." : isPayoutAction ? "Collecting..." : "Collect Reward"}
               </button>
             )}
 
-            {autoFinalizeBlocked && isSettled && isTie && (
+            {isSettled && isTie && isViewerParticipant && isRewardClaimable && (
               <button
                 onClick={handleSplitTie}
                 disabled={isSplitAction || isSwitchingChain}
@@ -703,6 +720,22 @@ export default function DuelDetailPage() {
               >
                 {isSwitchingChain ? "Switching..." : isSplitAction ? "Splitting..." : "Split Tie"}
               </button>
+            )}
+
+            {isSettled && !isTie && isConnectedWinner && !isRewardClaimable && (
+              <div className="rounded-2xl border border-primary/30 bg-primary/10 px-5 py-3 text-center min-w-[190px]">
+                <p className="font-mono text-xs text-muted-foreground mb-1">Reward</p>
+                <p className="font-mono text-sm font-bold text-primary flex items-center justify-center gap-1.5">
+                  <Trophy className="h-4 w-4" /> Reward Collected
+                </p>
+              </div>
+            )}
+
+            {isSettled && !isTie && isConnectedLoser && (
+              <div className="rounded-2xl border border-red-500/30 bg-red-500/10 px-5 py-3 text-center min-w-[170px]">
+                <p className="font-mono text-xs text-muted-foreground mb-1">Result</p>
+                <p className="font-mono text-sm font-bold text-red-400">You Lost</p>
+              </div>
             )}
           </div>
         </div>
@@ -731,6 +764,15 @@ export default function DuelDetailPage() {
                     <p className="font-mono text-sm font-bold text-primary">{formatEth(duel.entryAmountEth * 2)}</p>
                   </div>
                 </div>
+                {isViewerParticipant && (
+                  <p className={`font-mono text-xs mt-4 ${isConnectedWinner ? "text-primary" : isConnectedLoser ? "text-red-400" : "text-muted-foreground"}`}>
+                    {isConnectedWinner
+                      ? "You won this duel. Collect your reward using the button above."
+                      : isConnectedLoser
+                        ? "You lost this duel. Better luck in the next one."
+                        : "Winner determined on-chain."}
+                  </p>
+                )}
               </div>
             )}
 
@@ -854,22 +896,26 @@ export default function DuelDetailPage() {
                   <span className="font-mono text-[11px] text-muted-foreground">Duel window closed</span>
                 </div>
 
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                  <div className="rounded-xl border border-border bg-background px-4 py-3">
-                    <p className="font-mono text-[10px] text-muted-foreground mb-1">{firstPlayerAddress} Final Performance</p>
-                    <p className="font-mono text-sm font-semibold text-foreground">Index {creatorIndexValue.toFixed(2)}</p>
-                    <p className={`font-mono text-xs ${creatorPnL >= 0 ? "text-emerald-400" : "text-red-400"}`}>
-                      {creatorPnL >= 0 ? "+" : ""}{creatorPnL.toFixed(2)}% final
-                    </p>
+                {endPricesQuery.isLoading ? (
+                  <p className="font-mono text-xs text-muted-foreground text-center py-4">Loading final performance data...</p>
+                ) : (
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <div className="rounded-xl border border-border bg-background px-4 py-3">
+                      <p className="font-mono text-[10px] text-muted-foreground mb-1">{firstPlayerAddress} Final Performance</p>
+                      <p className="font-mono text-sm font-semibold text-foreground">Index {creatorIndexValue.toFixed(2)}</p>
+                      <p className={`font-mono text-xs ${creatorPnL >= 0 ? "text-emerald-400" : "text-red-400"}`}>
+                        {creatorPnL >= 0 ? "+" : ""}{creatorPnL.toFixed(2)}% final
+                      </p>
+                    </div>
+                    <div className="rounded-xl border border-border bg-background px-4 py-3">
+                      <p className="font-mono text-[10px] text-muted-foreground mb-1">{secondPlayerAddress} Final Performance</p>
+                      <p className="font-mono text-sm font-semibold text-foreground">Index {opponentIndexValue.toFixed(2)}</p>
+                      <p className={`font-mono text-xs ${opponentPnL >= 0 ? "text-emerald-400" : "text-red-400"}`}>
+                        {opponentPnL >= 0 ? "+" : ""}{opponentPnL.toFixed(2)}% final
+                      </p>
+                    </div>
                   </div>
-                  <div className="rounded-xl border border-border bg-background px-4 py-3">
-                    <p className="font-mono text-[10px] text-muted-foreground mb-1">{secondPlayerAddress} Final Performance</p>
-                    <p className="font-mono text-sm font-semibold text-foreground">Index {opponentIndexValue.toFixed(2)}</p>
-                    <p className={`font-mono text-xs ${opponentPnL >= 0 ? "text-emerald-400" : "text-red-400"}`}>
-                      {opponentPnL >= 0 ? "+" : ""}{opponentPnL.toFixed(2)}% final
-                    </p>
-                  </div>
-                </div>
+                )}
               </div>
             )}
 
