@@ -2,7 +2,9 @@
 
 **Binary Options Trading Through Custom Index Duels**
 
-FlowIn-Dex is a decentralized binary options platform where traders compete by creating custom weighted asset indexes. Instead of buying traditional call/put options, users stake an amount betting that their custom index will outperform their opponent's index over a fixed time period. The current implementation uses Flow EVM with Pyth Network oracles for transparent on-chain settlement, with a future encrypted track planned using Zama's fhEVM technology.
+FlowIn-Dex is a decentralized binary options platform where traders compete by creating custom weighted asset indexes. Instead of buying traditional call/put options, users stake an amount betting that their custom index will outperform their opponent's index over a fixed time period. The current implementation uses Flow EVM with Pyth Network oracles for transparent on-chain settlement.
+
+**Note on Zama fhEVM**: A privacy-preserving encrypted track using Zama's fhEVM technology was planned but is not yet implemented. The current version operates with transparent on-chain settlement on Flow EVM.
 
 ![License](https://img.shields.io/badge/license-MIT-blue.svg)
 ![Solidity](https://img.shields.io/badge/solidity-0.8.24-green.svg)
@@ -64,7 +66,67 @@ FlowIn-Dex is a decentralized binary options platform where traders compete by c
 FlowIn-Dex uses a dual-track architecture:
 
 1. **Transparent Track (Current Implementation)**: Flow EVM + Pyth oracles for public on-chain duels
-2. **Encrypted Track (Future)**: Zama fhEVM for privacy-preserving portfolio competitions
+2. **Encrypted Track (Planned)**: Zama fhEVM for privacy-preserving index competitions (not yet implemented)
+
+### System Architecture Diagram
+
+```mermaid
+graph TB
+    subgraph "Frontend Layer"
+        A[Next.js 14 Application]
+        B[RainbowKit Wallet]
+        C[Wagmi + Viem]
+    end
+    
+    subgraph "Backend Layer"
+        D[Express API Server]
+        E[Pyth Price Service]
+        F[On-Chain Duel Service]
+    end
+    
+    subgraph "Smart Contract Layer"
+        G[DuelFactoryOnChain<br/>0x0991bfA42b3847675737E7478C020A98fe83198C]
+        H[DuelOnChain<br/>Individual Duel Contracts]
+        I[AssetRegistry<br/>0xb86E760c84EEFdBcBB95FCFF58f9C8dC584d75B0]
+        J[PythConsumer<br/>0xD1540731D73350e1B16Bb13EA4456926291e240F]
+    end
+    
+    subgraph "External Services"
+        K[Flow EVM Testnet<br/>Chain ID: 545]
+        L[Pyth Network Oracle<br/>0x2880aB155794e7179c9eE2e38200202908C17B43]
+        M[Hermes API<br/>Price Feed Service]
+    end
+    
+    A --> B
+    A --> C
+    A --> D
+    B --> C
+    C --> K
+    
+    D --> E
+    D --> F
+    E --> M
+    F --> G
+    
+    G --> H
+    G --> I
+    H --> J
+    H --> I
+    J --> L
+    
+    G --> K
+    H --> K
+    I --> K
+    J --> K
+    L --> K
+    
+    style G fill:#4CAF50
+    style H fill:#4CAF50
+    style I fill:#4CAF50
+    style J fill:#4CAF50
+    style L fill:#2196F3
+    style K fill:#FF9800
+```
 
 ### Current System Architecture
 
@@ -183,8 +245,10 @@ Edit `contracts/.env`:
 ```env
 FLOW_EVM_RPC_URL=https://testnet.evm.nodes.onflow.org
 FLOW_EVM_PRIVATE_KEY=your_private_key_here
-FLOW_EVM_PYTH_ADDRESS=0xA2aa501b19aff244D90cc15a4Cf739D2725B5729
+FLOW_EVM_PYTH_ADDRESS=0x2880aB155794e7179c9eE2e38200202908C17B43
 ```
+
+**Note**: The Pyth address above is the official Pyth Oracle on Flow EVM Testnet.
 
 #### Backend Environment
 ```bash
@@ -198,9 +262,11 @@ PORT=3000
 NODE_ENV=development
 FLOW_EVM_RPC_URL=https://testnet.evm.nodes.onflow.org
 FLOW_EVM_PRIVATE_KEY=your_private_key_here
-FLOW_EVM_DUEL_FACTORY=<deployed_factory_address>
+FLOW_EVM_DUEL_FACTORY=0x0991bfA42b3847675737E7478C020A98fe83198C
 PYTH_PRICE_SERVICE_URL=https://hermes.pyth.network
 ```
+
+**Note**: The `FLOW_EVM_DUEL_FACTORY` address above is the currently deployed factory. You can use this address to interact with existing duels, or deploy your own instance.
 
 #### Frontend Environment
 ```bash
@@ -211,9 +277,11 @@ cp .env.example .env.local
 Edit `frontend/.env.local`:
 ```env
 NEXT_PUBLIC_FLOW_EVM_RPC_URL=https://testnet.evm.nodes.onflow.org
-NEXT_PUBLIC_DUEL_FACTORY=<deployed_factory_address>
+NEXT_PUBLIC_DUEL_FACTORY=0x0991bfA42b3847675737E7478C020A98fe83198C
 NEXT_PUBLIC_CHAIN_ID=545
 ```
+
+**Note**: The `NEXT_PUBLIC_DUEL_FACTORY` address above is the currently deployed factory. You can use this address to interact with existing duels, or deploy your own instance.
 
 ### Get Testnet Tokens
 
@@ -228,7 +296,25 @@ Enter your wallet address and request FLOW tokens for testing.
 
 ## Smart Contracts
 
+### Deployed Contract Addresses
+
+All contracts are deployed on **Flow EVM Testnet (Chain ID: 545)**:
+
+| Contract | Address |
+|----------|---------|
+| **DuelFactoryOnChain** | `0x0991bfA42b3847675737E7478C020A98fe83198C` |
+| **AssetRegistry** | `0xb86E760c84EEFdBcBB95FCFF58f9C8dC584d75B0` |
+| **PythConsumer** | `0xD1540731D73350e1B16Bb13EA4456926291e240F` |
+| **Pyth Oracle** | `0x2880aB155794e7179c9eE2e38200202908C17B43` |
+
 ### Contract Overview
+
+#### **DuelFactoryOnChain.sol**
+Factory contract for creating and managing duels.
+
+**Deployed Address**: `0x0991bfA42b3847675737E7478C020A98fe83198C`
+
+**Key Functions:**
 
 #### **DuelFactoryOnChain.sol**
 Factory contract for creating and managing duels.
@@ -248,6 +334,8 @@ Factory contract for creating and managing duels.
 #### **DuelOnChain.sol**
 Individual duel contract with portfolio logic and settlement.
 
+**Deployed**: Individual instances created by factory for each duel
+
 **Key Functions:**
 - `joinDuel()`: Opponent joins with matching entry amount
 - `submitPortfolio()`: Submit portfolio weights (must sum to 100%, 50% Tier 1, 50% Tier 2)
@@ -258,8 +346,33 @@ Individual duel contract with portfolio logic and settlement.
 - `splitTieWinnings()`: Split prize pool in case of exact tie
 
 **State Machine:**
-```
-Created → Joined → SubmittedOne → SubmittedBoth → Active → Settled
+```mermaid
+stateDiagram-v2
+    [*] --> Created: Factory deploys contract
+    Created --> Joined: Opponent joins with stake
+    Joined --> SubmittedOne: First participant submits
+    SubmittedOne --> SubmittedBoth: Second participant submits
+    SubmittedBoth --> Active: activateDuel() called
+    Active --> Active: lockStartPrices()
+    Active --> Settled: lockEndPricesAndSettle()
+    Settled --> [*]: executePayout() or splitTieWinnings()
+    
+    note right of Created
+        Creator stakes entry amount
+    end note
+    
+    note right of Joined
+        Both stakes locked in escrow
+    end note
+    
+    note right of Active
+        Timer starts, prices locked
+    end note
+    
+    note right of Settled
+        Winner determined
+        Prize ready for claim
+    end note
 ```
 
 **Precision Settlement:**
@@ -270,6 +383,8 @@ Created → Joined → SubmittedOne → SubmittedBoth → Active → Settled
 #### **PythConsumer.sol**
 Oracle integration for price feeds.
 
+**Deployed Address**: `0xD1540731D73350e1B16Bb13EA4456926291e240F`
+
 **Key Functions:**
 - `updatePriceFeeds()`: Update multiple price feeds with Pyth data
 - `getPrice()`: Get latest price for an asset
@@ -277,6 +392,8 @@ Oracle integration for price feeds.
 
 #### **AssetRegistry.sol**
 Manages asset metadata and tier classifications.
+
+**Deployed Address**: `0xb86E760c84EEFdBcBB95FCFF58f9C8dC584d75B0`
 
 **Key Functions:**
 - `registerAssets()`: Register assets with price IDs, tiers, and symbols
@@ -411,6 +528,75 @@ Result: You win $1,000 (your $500 + opponent's $500)
 Creator    Opponent    (both)       Start      Start/End   Winner    Prize
 deploys     joins      submit       timer      prices      computed  released
 contract              weights                  locked
+```
+
+### Duel Lifecycle Sequence Diagram
+
+```mermaid
+sequenceDiagram
+    participant Creator
+    participant Opponent
+    participant Frontend
+    participant Backend
+    participant DuelFactory
+    participant DuelContract
+    participant PythOracle
+    participant Flowscan
+    
+    Note over Creator,Flowscan: Phase 1: Duel Creation
+    Creator->>Frontend: Create duel (stake, duration, index)
+    Frontend->>DuelFactory: createDuel(stake, duration, assets, weights)
+    DuelFactory->>DuelContract: Deploy new DuelOnChain
+    DuelFactory->>Creator: Transfer stake to contract
+    DuelFactory-->>Frontend: Return duelId, tx hash
+    Frontend->>Flowscan: Display transaction link
+    
+    Note over Creator,Flowscan: Phase 2: Opponent Joins
+    Opponent->>Frontend: Browse available duels
+    Opponent->>DuelContract: joinDuel() + stake
+    DuelContract->>Opponent: Lock stake in escrow
+    DuelContract-->>Frontend: State: Joined, tx hash
+    Frontend->>Flowscan: Display transaction link
+    
+    Note over Creator,Flowscan: Phase 3: Portfolio Submission
+    Creator->>DuelContract: submitPortfolio(weights)
+    DuelContract-->>Frontend: State: SubmittedOne
+    Opponent->>DuelContract: submitPortfolio(weights)
+    DuelContract-->>Frontend: State: SubmittedBoth
+    
+    Note over Creator,Flowscan: Phase 4: Activation
+    Creator->>DuelContract: activateDuel()
+    DuelContract->>DuelContract: Record startTime, endTime
+    DuelContract-->>Frontend: State: Active, tx hash
+    Frontend->>Flowscan: Display transaction link
+    
+    Note over Creator,Flowscan: Phase 5: Price Locking
+    Creator->>Backend: Request start price lock
+    Backend->>PythOracle: Fetch price update data
+    PythOracle-->>Backend: Return Pyth update payload
+    Backend->>DuelContract: lockStartPrices(updateData)
+    DuelContract->>PythOracle: Update price feeds
+    DuelContract-->>Frontend: Start prices locked, tx hash
+    Frontend->>Flowscan: Display transaction link
+    
+    Note over Creator,Flowscan: Wait for duration to expire...
+    
+    Opponent->>Backend: Request end price lock & settle
+    Backend->>PythOracle: Fetch price update data
+    PythOracle-->>Backend: Return Pyth update payload
+    Backend->>DuelContract: lockEndPricesAndSettle(updateData)
+    DuelContract->>PythOracle: Update price feeds
+    DuelContract->>DuelContract: Calculate weighted returns
+    DuelContract->>DuelContract: Compare returns (micro-precision)
+    DuelContract->>DuelContract: Determine winner
+    DuelContract-->>Frontend: State: Settled, winner, tx hash
+    Frontend->>Flowscan: Display transaction link
+    
+    Note over Creator,Flowscan: Phase 7: Payout
+    Opponent->>DuelContract: executePayout()
+    DuelContract->>Opponent: Transfer 2x stake to winner
+    DuelContract-->>Frontend: Payout complete, tx hash
+    Frontend->>Flowscan: Display transaction link
 ```
 
 ### Detailed Flow
@@ -612,6 +798,31 @@ Frontend runs on `http://localhost:3001`
 ---
 
 ## Deployment
+
+### Deployed Contracts on Flow EVM Testnet
+
+The following contracts are currently deployed and operational on Flow EVM Testnet (Chain ID: 545):
+
+| Contract | Address | Purpose |
+|----------|---------|---------|
+| **PythConsumer** | `0xD1540731D73350e1B16Bb13EA4456926291e240F` | Oracle integration for price feeds |
+| **AssetRegistry** | `0xb86E760c84EEFdBcBB95FCFF58f9C8dC584d75B0` | Asset metadata and tier management |
+| **DuelFactoryOnChain** | `0x0991bfA42b3847675737E7478C020A98fe83198C` | Factory for creating duels |
+| **Pyth Oracle** | `0x2880aB155794e7179c9eE2e38200202908C17B43` | Pyth Network price oracle (official) |
+
+**Deployment Date**: March 28, 2026  
+**Network**: Flow EVM Testnet  
+**Chain ID**: 545  
+**Block Explorer**: [https://evm-testnet.flowscan.io](https://evm-testnet.flowscan.io)
+
+You can verify these contracts on Flowscan:
+- [PythConsumer](https://evm-testnet.flowscan.io/address/0xD1540731D73350e1B16Bb13EA4456926291e240F)
+- [AssetRegistry](https://evm-testnet.flowscan.io/address/0xb86E760c84EEFdBcBB95FCFF58f9C8dC584d75B0)
+- [DuelFactoryOnChain](https://evm-testnet.flowscan.io/address/0x0991bfA42b3847675737E7478C020A98fe83198C)
+
+### Deploy Your Own Instance
+
+If you want to deploy your own instance of the contracts:
 
 ### Deploy Contracts to Flow EVM Testnet
 
@@ -868,11 +1079,13 @@ See `CACHE_FIX_INSTRUCTIONS.md` for details.
 - [ ] Social features (share duels, invite friends)
 
 ### Phase 3: Privacy Track (fhEVM)
-- [ ] Encrypted portfolio duels using Zama fhEVM
+- [ ] Encrypted index duels using Zama fhEVM (not yet implemented)
 - [ ] Client-side encryption with fhEVM SDK
 - [ ] Selective decryption (winner only)
 - [ ] ACL-based access control
 - [ ] Privacy-preserving leaderboards
+
+**Note**: The encrypted privacy track using Zama's fhEVM technology is planned for future implementation. The current version uses transparent on-chain settlement on Flow EVM.
 
 ### Phase 4: Cross-Chain Expansion
 - [ ] Deploy to additional EVM chains
@@ -902,11 +1115,11 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 
 ## Acknowledgments
 
-- **Flow** - EVM-compatible blockchain infrastructure
-- **Pyth Network** - Decentralized oracle for price feeds
+- **Flow** - EVM-compatible blockchain infrastructure and testnet deployment
+- **Pyth Network** - Decentralized oracle for real-time price feeds
 - **OpenZeppelin** - Secure contract libraries
 - **RainbowKit** - Beautiful wallet connection UX
-- **Zama** - Future fhEVM privacy integration
+- **Zama** - Inspiration for future fhEVM privacy integration (not yet implemented)
 
 ---
 
