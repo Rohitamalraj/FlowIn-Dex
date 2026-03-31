@@ -12,27 +12,6 @@ FlowIn-Dex is a decentralized binary options platform where traders compete by c
 
 ---
 
-## Table of Contents
-
-- [Features](#features)
-- [Architecture](#architecture)
-- [Tech Stack](#tech-stack)
-- [Getting Started](#getting-started)
-- [Smart Contracts](#smart-contracts)
-- [Backend API](#backend-api)
-- [Frontend Application](#frontend-application)
-- [How It Works](#how-it-works)
-- [Wallet Compatibility](#wallet-compatibility)
-- [Development](#development)
-- [Testing](#testing)
-- [Deployment](#deployment)
-- [API Documentation](#api-documentation)
-- [Troubleshooting](#troubleshooting)
-- [Roadmap](#roadmap)
-- [License](#license)
-
----
-
 ## Features
 
 ### Binary Options Trading Model
@@ -313,11 +292,6 @@ All contracts are deployed on **Flow EVM Testnet (Chain ID: 545)**:
 Factory contract for creating and managing duels.
 
 **Deployed Address**: `0x0991bfA42b3847675737E7478C020A98fe83198C`
-
-**Key Functions:**
-
-#### **DuelFactoryOnChain.sol**
-Factory contract for creating and managing duels.
 
 **Key Functions:**
 - `createDuel()`: Deploy a new duel with entry amount, duration, and asset configuration
@@ -799,32 +773,17 @@ Frontend runs on `http://localhost:3001`
 
 ## Deployment
 
-### Deployed Contracts on Flow EVM Testnet
+### Using Deployed Contracts
 
-The following contracts are currently deployed and operational on Flow EVM Testnet (Chain ID: 545):
+The contracts are already deployed on Flow EVM Testnet. See the [Smart Contracts](#smart-contracts) section above for deployed addresses and Flowscan verification links.
 
-| Contract | Address | Purpose |
-|----------|---------|---------|
-| **PythConsumer** | `0xD1540731D73350e1B16Bb13EA4456926291e240F` | Oracle integration for price feeds |
-| **AssetRegistry** | `0xb86E760c84EEFdBcBB95FCFF58f9C8dC584d75B0` | Asset metadata and tier management |
-| **DuelFactoryOnChain** | `0x0991bfA42b3847675737E7478C020A98fe83198C` | Factory for creating duels |
-| **Pyth Oracle** | `0x2880aB155794e7179c9eE2e38200202908C17B43` | Pyth Network price oracle (official) |
-
-**Deployment Date**: March 28, 2026  
-**Network**: Flow EVM Testnet  
-**Chain ID**: 545  
-**Block Explorer**: [https://evm-testnet.flowscan.io](https://evm-testnet.flowscan.io)
-
-You can verify these contracts on Flowscan:
-- [PythConsumer](https://evm-testnet.flowscan.io/address/0xD1540731D73350e1B16Bb13EA4456926291e240F)
-- [AssetRegistry](https://evm-testnet.flowscan.io/address/0xb86E760c84EEFdBcBB95FCFF58f9C8dC584d75B0)
-- [DuelFactoryOnChain](https://evm-testnet.flowscan.io/address/0x0991bfA42b3847675737E7478C020A98fe83198C)
+You can use these deployed contracts immediately by configuring your `.env` files with the factory address: `0x0991bfA42b3847675737E7478C020A98fe83198C`
 
 ### Deploy Your Own Instance
 
 If you want to deploy your own instance of the contracts:
 
-### Deploy Contracts to Flow EVM Testnet
+#### Deploy Contracts to Flow EVM Testnet
 
 1. **Configure environment**:
 ```bash
