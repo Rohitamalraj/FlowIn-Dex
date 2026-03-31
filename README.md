@@ -1,12 +1,12 @@
-# 🛡️ ShieldVault - Confidential Portfolio Duels on fhEVM
+# 🛡️ ShieldVault - On-Chain Portfolio Duels
 
-**Confidential Portfolio Duels for Onchain Finance**
+**Transparent Portfolio Performance Competition on Flow EVM**
 
-ShieldVault is a privacy-preserving DeFi platform where two traders compete by building weighted asset portfolios. Using Zama's fhEVM (Fully Homomorphic Encryption), all portfolio compositions remain encrypted on-chain, and only the final duel winner is revealed.
+ShieldVault is a DeFi platform where two traders compete by building weighted asset portfolios. The current implementation uses Flow EVM with Pyth Network oracles for transparent on-chain settlement, with a future encrypted track planned using Zama's fhEVM technology.
 
 ![License](https://img.shields.io/badge/license-MIT-blue.svg)
 ![Solidity](https://img.shields.io/badge/solidity-0.8.24-green.svg)
-![Network](https://img.shields.io/badge/network-Zama_Devnet-purple.svg)
+![Network](https://img.shields.io/badge/network-Flow_EVM_Testnet-purple.svg)
 
 ---
 
@@ -18,15 +18,15 @@ ShieldVault is a privacy-preserving DeFi platform where two traders compete by b
 - [Getting Started](#-getting-started)
 - [Smart Contracts](#-smart-contracts)
 - [Backend API](#-backend-api)
+- [Frontend Application](#-frontend-application)
 - [How It Works](#-how-it-works)
-- [Privacy Model](#-privacy-model)
+- [Wallet Compatibility](#-wallet-compatibility)
 - [Development](#-development)
 - [Testing](#-testing)
 - [Deployment](#-deployment)
 - [API Documentation](#-api-documentation)
-- [Security](#-security)
+- [Troubleshooting](#-troubleshooting)
 - [Roadmap](#-roadmap)
-- [Contributing](#-contributing)
 - [License](#-license)
 
 ---
@@ -34,52 +34,65 @@ ShieldVault is a privacy-preserving DeFi platform where two traders compete by b
 ## ✨ Features
 
 ### Core Functionality
-- **🔒 Confidential Portfolios**: All asset weights encrypted using fhEVM's euint types
 - **⚔️ 1v1 Duels**: Head-to-head portfolio performance competitions
-- **🎯 Tiered Assets**: 50/50 split between Tier 1 (blue-chips) and Tier 2 (altcoins)
-- **🏆 Encrypted Settlement**: Winner computed on encrypted data
-- **👁️ Selective Disclosure**: Only final results revealed, strategies stay private
-- **📊 Real-time Prices**: Pyth Network oracle integration for asset pricing
+- **🎯 Tiered Assets**: 50/50 split requirement between Tier 1 (blue-chips) and Tier 2 (altcoins/stablecoins)
+- **📊 Real-time Prices**: Pyth Network oracle integration for accurate asset pricing
+- **🏆 Transparent Settlement**: Winner determined by on-chain portfolio performance calculation
+- **💰 Escrow System**: Entry fees locked in smart contracts, winner takes all
+- **🔍 Transaction Verification**: Flowscan explorer links for all major on-chain events
 
-### Privacy Features
-- Client-side encryption before submission
-- On-chain encrypted storage (no plaintext exposure)
-- FHE arithmetic for performance computation
-- ACL-based selective decryption
-- Compliance-aware privacy controls
+### Asset Tiers
+- **Tier 1 (Blue-Chip)**: BTC, ETH, SOL, BNB, LINK
+- **Tier 2 (Altcoins/Stables)**: STRK, ARB, OP, MATIC, AVAX, USDC, USDT, DAI
+
+### Precision Settlement
+- Micro-basis-point precision (×1,000,000) prevents false ties
+- Accurate winner determination even with small performance differences
+- Transparent on-chain calculation with verifiable results
 
 ---
 
 ## 🏗️ Architecture
 
+ShieldVault uses a dual-track architecture:
+
+1. **Transparent Track (Current Implementation)**: Flow EVM + Pyth oracles for public on-chain duels
+2. **Encrypted Track (Future)**: Zama fhEVM for privacy-preserving portfolio competitions
+
+### Current System Architecture
+
 ```
 ┌─────────────────────────────────────────────────────────────┐
-│                        Frontend (Future)                     │
-│              React + fhEVM Client SDK + Wallet               │
+│                    Frontend (Next.js 14)                     │
+│         RainbowKit + Wagmi + Viem + React 19                │
+│              Portfolio Builder + Duel Management             │
 └─────────────────────┬───────────────────────────────────────┘
                       │
                       ▼
 ┌─────────────────────────────────────────────────────────────┐
-│                    Backend API (Node.js)                     │
+│                Backend API (Express + TypeScript)            │
 │  ┌──────────────┐  ┌─────────────┐  ┌──────────────────┐   │
-│  │ Event Indexer│  │ Pyth Oracle │  │  REST API        │   │
-│  │   Service    │  │  Service    │  │  Endpoints       │   │
+│  │ On-Chain     │  │ Pyth Oracle │  │  REST API        │   │
+│  │ Duel Service │  │  Service    │  │  Endpoints       │   │
 │  └──────────────┘  └─────────────┘  └──────────────────┘   │
 └─────────────────────┬───────────────────────────────────────┘
                       │
                       ▼
 ┌─────────────────────────────────────────────────────────────┐
-│              Smart Contracts (fhEVM Solidity)                │
+│              Smart Contracts (Solidity 0.8.24)               │
 │  ┌──────────────┐  ┌─────────────┐  ┌──────────────────┐   │
-│  │ DuelFactory  │  │    Duel     │  │ AssetRegistry    │   │
-│  │              │  │  (euint32)  │  │  (Tier Mgmt)     │   │
+│  │DuelFactory   │  │ DuelOnChain │  │ AssetRegistry    │   │
+│  │OnChain       │  │             │  │                  │   │
 │  └──────────────┘  └─────────────┘  └──────────────────┘   │
+│  ┌──────────────────────────────────────────────────────┐   │
+│  │           PythConsumer (Oracle Integration)          │   │
+│  └──────────────────────────────────────────────────────┘   │
 └─────────────────────┬───────────────────────────────────────┘
                       │
                       ▼
 ┌─────────────────────────────────────────────────────────────┐
-│         Zama fhEVM (Devnet)  +  Pyth Network                │
-│         Encrypted Computation  +  Price Feeds                │
+│         Flow EVM Testnet  +  Pyth Network                   │
+│         Chain ID: 545     +  Price Feeds                    │
 └─────────────────────────────────────────────────────────────┘
 ```
 
@@ -89,21 +102,31 @@ ShieldVault is a privacy-preserving DeFi platform where two traders compete by b
 
 ### Smart Contracts
 - **Solidity**: 0.8.24
-- **fhEVM**: Zama's Fully Homomorphic Encryption library
-- **Hardhat**: Development environment
-- **TypeChain**: TypeScript bindings
-- **OpenZeppelin**: Standard contract utilities
+- **Hardhat**: Development environment and testing
+- **OpenZeppelin**: Standard contract utilities (Ownable)
+- **Pyth SDK**: Oracle integration for price feeds
+- **ethers.js**: Contract interaction library
 
 ### Backend
 - **Node.js**: 20.x with TypeScript
 - **Express**: RESTful API framework
 - **ethers.js**: Blockchain interaction
-- **Pyth Network**: Decentralized oracle for price feeds
-- **Node-Cache**: In-memory caching
+- **Pyth Network**: Decentralized oracle (Hermes API)
+- **Node-Cache**: In-memory price caching
 
-### Testing
-- **Chai**: Assertion library
-- **Hardhat Test Runner**: Contract testing
+### Frontend
+- **Next.js**: 14.2.25 (React 19)
+- **RainbowKit**: 2.2.10 (Wallet connection)
+- **Wagmi**: 2.19.5 (React hooks for Ethereum)
+- **Viem**: 2.47.6 (TypeScript Ethereum library)
+- **Tailwind CSS**: 4.1.9 (Styling)
+- **Radix UI**: Component primitives
+- **Lucide React**: Icon library
+
+### Infrastructure
+- **Flow EVM Testnet**: Layer 1 blockchain (Chain ID: 545)
+- **Pyth Network**: Decentralized oracle network
+- **Flowscan**: Block explorer for transaction verification
 
 ---
 
@@ -111,8 +134,9 @@ ShieldVault is a privacy-preserving DeFi platform where two traders compete by b
 
 ### Prerequisites
 
-- Node.js 18+ and npm/yarn
+- Node.js 18+ and npm
 - Git
+- MetaMask or compatible EVM wallet
 
 ### Installation
 
@@ -134,21 +158,64 @@ cd ../backend
 npm install
 ```
 
-4. **Configure environment variables**
+4. **Install frontend dependencies**
+```bash
+cd ../frontend
+npm install
+```
 
-Contracts:
+### Configuration
+
+#### Contracts Environment
 ```bash
 cd contracts
 cp .env.example .env
-# Edit .env with your private key
 ```
 
-Backend:
+Edit `contracts/.env`:
+```env
+FLOW_EVM_RPC_URL=https://testnet.evm.nodes.onflow.org
+FLOW_EVM_PRIVATE_KEY=your_private_key_here
+FLOW_EVM_PYTH_ADDRESS=0xA2aa501b19aff244D90cc15a4Cf739D2725B5729
+```
+
+#### Backend Environment
 ```bash
 cd backend
 cp .env.example .env
-# Edit .env with deployed contract addresses
 ```
+
+Edit `backend/.env`:
+```env
+PORT=3000
+NODE_ENV=development
+FLOW_EVM_RPC_URL=https://testnet.evm.nodes.onflow.org
+FLOW_EVM_PRIVATE_KEY=your_private_key_here
+FLOW_EVM_DUEL_FACTORY=<deployed_factory_address>
+PYTH_PRICE_SERVICE_URL=https://hermes.pyth.network
+```
+
+#### Frontend Environment
+```bash
+cd frontend
+cp .env.example .env.local
+```
+
+Edit `frontend/.env.local`:
+```env
+NEXT_PUBLIC_FLOW_EVM_RPC_URL=https://testnet.evm.nodes.onflow.org
+NEXT_PUBLIC_DUEL_FACTORY=<deployed_factory_address>
+NEXT_PUBLIC_CHAIN_ID=545
+```
+
+### Get Testnet Tokens
+
+Visit the Flow Testnet Faucet:
+```
+https://testnet-faucet.onflow.org/
+```
+
+Enter your wallet address and request FLOW tokens for testing.
 
 ---
 
@@ -156,35 +223,58 @@ cp .env.example .env
 
 ### Contract Overview
 
-#### **DuelFactory.sol**
-Main factory contract for creating and managing duels.
+#### **DuelFactoryOnChain.sol**
+Factory contract for creating and managing duels.
 
 **Key Functions:**
-- `createDuel()`: Deploy a new duel with custom asset tiers
-- `getDuelDetails()`: Query duel information
-- `getUserDuels()`: Get all duels for a user
+- `createDuel()`: Deploy a new duel with entry amount, duration, and asset configuration
+- `getDuelDetails()`: Query duel contract address by ID
+- `getAllDuelsPaginated()`: Get all duels with pagination
+- `getDuelsPaginated()`: Get user's duels with pagination
 
-#### **Duel.sol**
-Individual duel contract with encrypted portfolio logic.
+**Configuration:**
+- Minimum entry amount: 0.001 FLOW
+- Minimum duration: 60 seconds
+- Maximum duration: 30 days
+- Platform fee: 0% (initially)
+
+#### **DuelOnChain.sol**
+Individual duel contract with portfolio logic and settlement.
 
 **Key Functions:**
-- `joinDuel()`: Opponent joins the duel
-- `submitWeights()`: Submit encrypted portfolio weights
-- `startSettlement()`: Trigger encrypted settlement computation
-- `decryptWinnerCallback()`: Gateway callback to reveal winner
+- `joinDuel()`: Opponent joins with matching entry amount
+- `submitPortfolio()`: Submit portfolio weights (must sum to 100%, 50% Tier 1, 50% Tier 2)
+- `activateDuel()`: Start the duel timer
+- `lockStartPrices()`: Lock starting prices from Pyth oracle
+- `lockEndPricesAndSettle()`: Lock ending prices and compute winner
+- `executePayout()`: Transfer prize pool to winner
+- `splitTieWinnings()`: Split prize pool in case of exact tie
 
-**Encrypted Data:**
-- `euint32` for asset weights (basis points)
-- `euint64` for performance scores
-- `ebool` for winner determination
+**State Machine:**
+```
+Created → Joined → SubmittedOne → SubmittedBoth → Active → Settled
+```
+
+**Precision Settlement:**
+- Calculates returns in micro-basis-points (×1,000,000 precision)
+- Prevents false ties from rounding errors
+- Stores precise returns on-chain for verification
+
+#### **PythConsumer.sol**
+Oracle integration for price feeds.
+
+**Key Functions:**
+- `updatePriceFeeds()`: Update multiple price feeds with Pyth data
+- `getPrice()`: Get latest price for an asset
+- `getPriceNoOlderThan()`: Get price with freshness check
 
 #### **AssetRegistry.sol**
-Manages asset classifications and tier requirements.
+Manages asset metadata and tier classifications.
 
 **Key Functions:**
-- `registerAssets()`: Register assets with tier classifications
+- `registerAssets()`: Register assets with price IDs, tiers, and symbols
 - `getAssetInfo()`: Query asset metadata
-- `getTierCounts()`: Get tier distribution
+- `getTierCounts()`: Get tier distribution for validation
 
 ---
 
@@ -194,26 +284,68 @@ Manages asset classifications and tier requirements.
 
 ```bash
 cd backend
-npm run dev  # Development mode with hot reload
-npm run build  # Production build
-npm start  # Production mode
+
+# Development mode with hot reload
+npm run dev
+
+# Production build
+npm run build
+npm start
 ```
 
-### Environment Configuration
+### Services
 
-Required environment variables:
-```env
-# Server
-PORT=3000
-NODE_ENV=development
+#### **PythPriceService**
+- Fetches real-time prices from Pyth Hermes API
+- Caches prices for performance
+- Supports 13 assets across Tier 1 and Tier 2
+- Provides price feed IDs for on-chain updates
 
-# Blockchain
-ZAMA_RPC_URL=https://devnet.zama.ai
-DUEL_FACTORY_ADDRESS=<deployed_address>
+#### **OnChainDuelService**
+- Interacts with deployed smart contracts
+- Handles duel creation, joining, portfolio submission
+- Manages settlement and payout operations
+- Provides duel state queries
 
-# Pyth Network
-PYTH_PRICE_SERVICE_URL=https://hermes.pyth.network
-```
+---
+
+## 🎨 Frontend Application
+
+### Key Pages
+
+#### **Home Page** (`/`)
+- Landing page with duel overview
+- Connect wallet functionality
+- Navigation to create/join duels
+
+#### **Create Duel** (`/create-duel`)
+- Visual portfolio builder with drag-and-drop
+- Asset selection with tier badges (T1/T2)
+- Real-time tier balance validation
+- Entry amount and duration configuration
+- Flowscan transaction link after creation
+
+#### **Join Duel** (`/join-duel`)
+- Browse available duels
+- Portfolio builder with tier validation
+- Asset selection with tier badges
+- Join with matching entry amount
+- Flowscan transaction link after joining
+
+#### **Duel Detail** (`/duel/[id]`)
+- Real-time duel state display
+- Portfolio compositions for both participants
+- Transaction history with Flowscan links
+- Settlement results and winner announcement
+- Action buttons for each duel stage
+
+### Features
+
+- **Wallet Integration**: RainbowKit with MetaMask, Rainbow, WalletConnect support
+- **Responsive Design**: Mobile-friendly UI with Tailwind CSS
+- **Real-time Updates**: Live duel state tracking
+- **Transaction Tracking**: Flowscan explorer links for all major events
+- **Tier Validation**: Visual feedback for 50/50 tier requirement
 
 ---
 
@@ -222,70 +354,127 @@ PYTH_PRICE_SERVICE_URL=https://hermes.pyth.network
 ### Duel Lifecycle
 
 ```
-1. CREATE ──→ 2. JOIN ──→ 3. SUBMIT ──→ 4. LOCK ──→ 5. SETTLE ──→ 6. PAYOUT
-   │             │          WEIGHTS       │           │              │
-Creator     Opponent      (encrypted)   Both      Encrypted      Winner
-deploys      joins        portfolios   submitted  computation   receives
-contract                   remain         ↓        on-chain       prize
-                          private      Start             ↓
-                                       timer       Decrypt
-                                                   winner only
+1. CREATE → 2. JOIN → 3. SUBMIT → 4. ACTIVATE → 5. LOCK → 6. SETTLE → 7. PAYOUT
+   │          │         PORTFOLIOS    │           PRICES    │           │
+Creator    Opponent    (both)       Start      Start/End   Winner    Prize
+deploys     joins      submit       timer      prices      computed  released
+contract              weights                  locked
 ```
 
 ### Detailed Flow
 
-1. **Duel Creation**
-   - Creator defines entry amount, duration, and allowed assets
-   - Assets are classified into Tier 1 (50%) and Tier 2 (50%)
-   - Entry fee locked in contract
+#### 1. Duel Creation
+- Creator defines entry amount (min 0.001 FLOW), duration (60s - 30 days)
+- Assets are classified into Tier 1 (50%) and Tier 2 (50%)
+- Entry fee locked in contract
+- Duel ID generated and contract deployed
+- Transaction hash displayed with Flowscan link
 
-2. **Opponent Joins**
-   - Opponent deposits matching entry amount
-   - Both participants can now submit portfolios
+#### 2. Opponent Joins
+- Opponent deposits matching entry amount
+- Both participants can now submit portfolios
+- State transitions to `Joined`
+- Transaction hash displayed with Flowscan link
 
-3. **Weight Submission**
-   - Each user encrypts their portfolio weights client-side
-   - Weights submitted as encrypted integers (euint32)
-   - Contract validates: total = 100%, Tier 1 = 50%, Tier 2 = 50%
-   - Strategies never exposed in plaintext
+#### 3. Portfolio Submission
+- Each user submits portfolio weights (basis points, sum = 10000)
+- Contract validates: total = 100%, Tier 1 = 50%, Tier 2 = 50%
+- Weights stored on-chain
+- State transitions through `SubmittedOne` → `SubmittedBoth`
+- Transaction hash displayed with Flowscan link
 
-4. **Duel Lock**
-   - Auto-locks when both participants submit
-   - Start and end timestamps recorded
-   - No further modifications allowed
+#### 4. Duel Activation
+- Either participant can activate after both submit
+- Start timestamp recorded
+- End timestamp calculated (start + duration)
+- State transitions to `Active`
+- Transaction hash displayed with Flowscan link
 
-5. **Settlement**
-   - After duration expires, anyone can trigger settlement
-   - Contract fetches price snapshots from Pyth oracle
-   - Computes encrypted weighted scores for both participants
-   - Compares scores under encryption
-   - Requests selective decryption of winner only
+#### 5. Price Locking
+- Start prices locked from Pyth oracle at activation
+- After duration expires, end prices locked
+- Pyth update data fetched from Hermes API
+- On-chain price feeds updated
+- Transaction hash displayed with Flowscan link
 
-6. **Payout**
-   - Winner receives total prize pool (2x entry amount)
-   - Portfolio compositions remain encrypted forever
+#### 6. Settlement
+- Contract calculates weighted returns for both portfolios
+- Uses micro-basis-point precision (×1,000,000)
+- Compares precise returns to determine winner
+- Handles exact ties (rare with micro-precision)
+- State transitions to `Settled`
+- Transaction hash displayed with Flowscan link
+
+#### 7. Payout
+- Winner receives total prize pool (2× entry amount)
+- Or 50/50 split in case of exact tie
+- Funds transferred from contract to winner
+- Duel finalized
+- Transaction hash displayed with Flowscan link
+
+### Portfolio Constraints
+
+- **Total Weight**: Must equal 100% (10000 basis points)
+- **Tier 1 Allocation**: Must equal 50% (5000 basis points)
+- **Tier 2 Allocation**: Must equal 50% (5000 basis points)
+- **Minimum Assets**: At least 2 assets required
+- **Weight Range**: Each asset 0-100%
+
+### Example Portfolio
+
+```
+Tier 1 (50%):
+- BTC: 30%
+- ETH: 20%
+
+Tier 2 (50%):
+- STRK: 20%
+- USDC: 30%
+
+Total: 100% ✓
+Tier 1: 50% ✓
+Tier 2: 50% ✓
+```
 
 ---
 
-## 🔐 Privacy Model
+## 🔌 Wallet Compatibility
 
-### What Stays Private
-✅ Individual asset weights (encrypted as euint32)
-✅ Portfolio composition and strategy
-✅ Intermediate performance calculations
-✅ Individual scores (encrypted as euint64)
+### Recommended Wallets
 
-### What Gets Revealed
-❌ Final duel winner (single decryption)
-❌ Entry amounts (public)
-❌ Duel metadata (duration, timestamps)
+| Wallet | Status | Notes |
+|--------|--------|-------|
+| **MetaMask** | ✅ Recommended | Best compatibility with Flow EVM |
+| **Rainbow Wallet** | ✅ Supported | Works perfectly |
+| **WalletConnect** | ✅ Supported | Good for mobile |
+| **Coinbase Wallet** | ✅ Supported | Works well |
+| **Flow Wallet** | ⚠️ Not Recommended | Has cross-VM compatibility issues |
 
-### Technical Implementation
-- **Client-side encryption**: Uses fhEVM relayer SDK
-- **On-chain storage**: euint types ensure ciphertext-only storage
-- **FHE arithmetic**: Addition, multiplication on encrypted values
-- **Gateway decryption**: Threshold KMS for selective reveal
-- **ACL enforcement**: Access control lists prevent unauthorized decryption
+### Flow Wallet Issue
+
+Flow Wallet may experience issues with pure EVM dApps due to cross-VM (Cadence ↔ EVM) confusion. The wallet sometimes queries the Cadence Mainnet API instead of the EVM Testnet, causing transaction failures.
+
+**Error Example:**
+```
+address 4791a4dbd575175e is invalid for chain flow-mainnet
+hostname=https://rest-mainnet.onflow.org
+```
+
+**Solution:** Use MetaMask or another pure EVM wallet for the best experience.
+
+### Adding Flow EVM Testnet to MetaMask
+
+1. Open MetaMask
+2. Click network dropdown → "Add Network" → "Add a network manually"
+3. Enter these details:
+   ```
+   Network Name: Flow EVM Testnet
+   RPC URL: https://testnet.evm.nodes.onflow.org
+   Chain ID: 545
+   Currency Symbol: FLOW
+   Block Explorer: https://evm-testnet.flowscan.io
+   ```
+4. Click "Save"
 
 ---
 
@@ -301,82 +490,102 @@ npm run compile
 ### Run Tests
 
 ```bash
+cd contracts
 npm run test
 ```
 
-Expected output:
-```
-ShieldVault - Core Duel Lifecycle
-  ✓ Should deploy with correct initial parameters
-  ✓ Should create a duel with valid parameters
-  ✓ Should allow opponent to join
-  ✓ Should register assets with correct tiers
-  ... (more tests)
-```
+### Run On-Chain Duel Test
 
-### Strict On-Chain Duel Demo (Flow EVM)
+This script runs a complete duel lifecycle on Flow EVM Testnet:
 
 ```bash
 cd contracts
 npm run test-on-chain-duel
 ```
 
-The strict on-chain demo prints:
-- transaction proofs for each duel stage (tx hash, block, gas, explorer link)
-- on-chain Pyth start/end snapshots and per-asset change percentages
-- precise settlement values in micro-bps and converted bps
-
-Example final output fields:
-```
-Creator Return (Precise): 2373185 micro-bps
-Opponent Return (Precise): 1305746 micro-bps
-Precise Delta (Creator - Opponent): 1.067439 bps
-```
+Expected output includes:
+- Transaction hashes for all operations
+- Block numbers and gas used
+- Flowscan explorer links
+- Start and end price snapshots
+- Per-asset price changes
+- Precise settlement values (micro-bps)
+- Winner determination
+- Payout confirmation
 
 ### Local Development
 
-1. **Start local fhEVM node** (if using local setup):
+1. **Start backend**:
 ```bash
-# Follow Zama's local fhEVM setup guide
-```
-
-2. **Deploy contracts**:
-```bash
-npm run deploy:local
-```
-
-3. **Start backend**:
-```bash
-cd ../backend
+cd backend
 npm run dev
 ```
+
+Backend runs on `http://localhost:3000`
+
+2. **Start frontend**:
+```bash
+cd frontend
+npm run dev
+```
+
+Frontend runs on `http://localhost:3001`
+
+3. **Connect wallet** to Flow EVM Testnet (Chain ID: 545)
+
+4. **Get testnet tokens** from faucet
+
+5. **Create and join duels** through the UI
 
 ---
 
 ## 🚀 Deployment
 
-### Deploy to Zama Devnet
+### Deploy Contracts to Flow EVM Testnet
 
-1. **Configure private key**:
+1. **Configure environment**:
 ```bash
 cd contracts
-echo "PRIVATE_KEY=your_private_key_here" >> .env
+# Edit .env with your private key
 ```
 
 2. **Deploy**:
 ```bash
-npm run deploy:devnet
+npm run deploy-on-chain
 ```
 
-3. **Copy deployed addresses to backend**:
+3. **Copy deployed addresses**:
+```bash
+# Output will show:
+# PythConsumer: 0x...
+# AssetRegistry: 0x...
+# DuelFactoryOnChain: 0x...
+```
+
+4. **Update backend `.env`**:
 ```bash
 cd ../backend
-echo "DUEL_FACTORY_ADDRESS=<factory_address>" >> .env
-echo "ASSET_REGISTRY_ADDRESS=<registry_address>" >> .env
+# Add FLOW_EVM_DUEL_FACTORY=<factory_address>
 ```
 
-4. **Start backend**:
+5. **Update frontend `.env.local`**:
 ```bash
+cd ../frontend
+# Add NEXT_PUBLIC_DUEL_FACTORY=<factory_address>
+```
+
+### Deploy Backend
+
+```bash
+cd backend
+npm run build
+npm start
+```
+
+### Deploy Frontend
+
+```bash
+cd frontend
 npm run build
 npm start
 ```
@@ -390,12 +599,21 @@ npm start
 http://localhost:3000/api
 ```
 
-### Endpoints
+### Health Check
 
-#### Health Check
 ```http
 GET /health
+
+Response:
+{
+  "status": "healthy",
+  "timestamp": "2026-04-01T12:00:00.000Z",
+  "service": "ShieldVault API",
+  "version": "1.0.0"
+}
 ```
+
+### Price Endpoints
 
 #### Get Supported Assets
 ```http
@@ -404,7 +622,7 @@ GET /api/prices/supported
 Response:
 {
   "success": true,
-  "symbols": ["BTC", "ETH", "SOL", ...],
+  "symbols": ["BTC", "ETH", "SOL", "BNB", "LINK", "STRK", "ARB", "OP", "MATIC", "AVAX", "USDC", "USDT", "DAI"],
   "count": 13
 }
 ```
@@ -421,7 +639,8 @@ Response:
   "price": {
     "symbol": "BTC",
     "price": 67234.55,
-    "publishTime": 1234567890
+    "publishTime": 1234567890,
+    "expo": -8
   }
 }
 ```
@@ -440,12 +659,14 @@ Response:
 {
   "success": true,
   "prices": {
-    "BTC": { "price": 67234.55, ... },
-    "ETH": { "price": 3456.78, ... },
-    "SOL": { "price": 123.45, ... }
+    "BTC": { "price": 67234.55, "publishTime": 1234567890 },
+    "ETH": { "price": 3456.78, "publishTime": 1234567890 },
+    "SOL": { "price": 123.45, "publishTime": 1234567890 }
   }
 }
 ```
+
+### Duel Endpoints
 
 #### Get Duel Details
 ```http
@@ -456,11 +677,11 @@ Response:
   "success": true,
   "duel": {
     "duelId": "0x...",
-    "state": "Locked",
+    "state": "Active",
     "creator": "0x...",
     "opponent": "0x...",
-    "entryAmount": "100000000000000000",
-    "entryAmountFormatted": "0.1",
+    "entryAmount": "1000000000000000",
+    "entryAmountFormatted": "0.001",
     "startTime": 1234567890,
     "endTime": 1234654290,
     "winner": null
@@ -477,58 +698,111 @@ Response:
   "success": true,
   "canSettle": true,
   "duelId": "0x...",
-  "state": "Locked",
+  "state": "Active",
   "endTime": 1234654290
 }
 ```
 
 ---
 
-## 🔒 Security
+## 🔧 Troubleshooting
 
-### Threat Model
+### Common Issues
 
-**Mitigated Risks:**
-- ✅ Front-running: Encrypted intent prevents MEV exploitation
-- ✅ Strategy copying: Portfolios never revealed
-- ✅ Data harvesting: No public alpha leakage
+#### 1. Wallet Connection Fails
 
-**Security Measures:**
-- Reentrancy guards on payouts
-- Access control on decryption pathways
-- Input validation on weights
-- Timeout and cancellation mechanisms
+**Problem**: Cannot connect wallet to dApp
 
-### Auditing Considerations
-- Encrypted state validation
-- Decryption request authorization
-- Oracle manipulation safeguards
-- Edge case state transitions
+**Solutions**:
+- Ensure you're using MetaMask or compatible EVM wallet
+- Add Flow EVM Testnet network manually (see Wallet Compatibility section)
+- Check that Chain ID is 545
+- Try refreshing the page and reconnecting
+
+#### 2. Transaction Fails with "Insufficient Funds"
+
+**Problem**: Transaction reverts due to low balance
+
+**Solutions**:
+- Get testnet FLOW from faucet: https://testnet-faucet.onflow.org/
+- Ensure you have enough for entry amount + gas fees
+- Wait a few minutes for faucet transaction to confirm
+
+#### 3. "Flow Wallet" Cross-VM Error
+
+**Problem**: Error mentions "flow-mainnet" or Cadence addresses
+
+**Solution**:
+- Switch to MetaMask (recommended)
+- See detailed fix in `FLOW_WALLET_ISSUE_FIX.md`
+
+#### 4. Portfolio Validation Fails
+
+**Problem**: Cannot submit portfolio, tier validation error
+
+**Solutions**:
+- Ensure total weight = 100%
+- Ensure Tier 1 assets = 50%
+- Ensure Tier 2 assets = 50%
+- Check that all weights are non-negative
+
+#### 5. Settlement Fails
+
+**Problem**: Cannot settle duel after duration expires
+
+**Solutions**:
+- Ensure duel duration has fully elapsed
+- Ensure start prices were locked
+- Check that duel state is `Active`
+- Verify Pyth oracle is accessible
+
+#### 6. Next.js Cache Issues
+
+**Problem**: Module resolution errors, webpack cache errors
+
+**Solution**:
+```bash
+cd frontend
+Remove-Item -Recurse -Force .next
+npm run dev
+```
+
+See `CACHE_FIX_INSTRUCTIONS.md` for details.
 
 ---
 
 ## 🗺️ Roadmap
 
-### ✅ Phase 1: MVP (Current)
-- [x] Core duel contracts with fhEVM
+### ✅ Phase 1: Transparent On-Chain MVP (Current)
+- [x] Core duel contracts on Flow EVM
 - [x] Tiered asset system (50/50 split)
-- [x] Encrypted settlement logic
 - [x] Pyth oracle integration
-- [x] Backend API with event indexing
-- [x] Comprehensive tests
+- [x] Micro-precision settlement (prevents false ties)
+- [x] Backend API with REST endpoints
+- [x] Frontend with RainbowKit wallet integration
+- [x] Flowscan transaction verification links
+- [x] Comprehensive testing and documentation
 
 ### 🚧 Phase 2: Enhanced Features
-- [ ] Frontend web application
 - [ ] Multi-round tournaments
 - [ ] Team duels (3v3, 5v5)
 - [ ] Leaderboard system
-- [ ] Historical analytics
+- [ ] Historical analytics dashboard
+- [ ] Mobile-responsive improvements
+- [ ] Social features (share duels, invite friends)
 
-### 🔮 Phase 3: Advanced Privacy
-- [ ] Dynamic rebalancing (encrypted)
-- [ ] Conditional strategies
-- [ ] Privacy-preserving reputation
-- [ ] Institutional compliance tools
+### 🔮 Phase 3: Privacy Track (fhEVM)
+- [ ] Encrypted portfolio duels using Zama fhEVM
+- [ ] Client-side encryption with fhEVM SDK
+- [ ] Selective decryption (winner only)
+- [ ] ACL-based access control
+- [ ] Privacy-preserving leaderboards
+
+### 🌐 Phase 4: Cross-Chain Expansion
+- [ ] Deploy to additional EVM chains
+- [ ] Cross-chain duel support
+- [ ] Multi-chain asset support
+- [ ] Unified liquidity pools
 
 ---
 
@@ -552,20 +826,22 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 
 ## 🙏 Acknowledgments
 
-- **Zama** - fhEVM technology and development support
-- **Pyth Network** - Decentralized oracle infrastructure
+- **Flow** - EVM-compatible blockchain infrastructure
+- **Pyth Network** - Decentralized oracle for price feeds
 - **OpenZeppelin** - Secure contract libraries
+- **RainbowKit** - Beautiful wallet connection UX
+- **Zama** - Future fhEVM privacy integration
 
 ---
 
 ## 📞 Contact & Support
 
 - **GitHub Issues**: [Report bugs or request features](https://github.com/yourusername/ShieldVault/issues)
-- **Documentation**: See `docs/` directory for detailed guides
-- **Demo Video**: Coming soon
+- **Documentation**: See project documentation files for detailed guides
+- **Block Explorer**: [Flowscan Testnet](https://evm-testnet.flowscan.io)
 
 ---
 
-Built with ❤️ for privacy-preserving DeFi
+Built with ❤️ for transparent and fair DeFi competition
 
-**ShieldVault** - *Where strategies stay secret, winners stay public*
+**ShieldVault** - *Where performance speaks louder than words*

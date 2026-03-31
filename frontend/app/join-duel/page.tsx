@@ -832,6 +832,7 @@ export default function JoinDuelPage() {
                         {SUPPORTED_ASSETS.map((asset) => {
                           const added = selected.includes(asset.symbol)
                           const full = nodes.length >= MAX_INDEX_ASSETS && !added
+                          const isTier1Asset = (ASSET_TIERS[asset.symbol] ?? 1) === 0
                           return (
                             <button
                               key={asset.symbol}
@@ -847,6 +848,15 @@ export default function JoinDuelPage() {
                             >
                               <span style={{ color: ASSET_COLORS[asset.symbol] }}>{asset.icon}</span>
                               {asset.symbol}
+                              <span
+                                className={`rounded-full border px-1.5 py-0.5 font-mono text-[9px] leading-none ${
+                                  isTier1Asset
+                                    ? "border-amber-400/40 text-amber-300"
+                                    : "border-sky-400/40 text-sky-300"
+                                }`}
+                              >
+                                {isTier1Asset ? "T1" : "T2"}
+                              </span>
                               {added ? <CheckCircle2 className="h-3 w-3 text-primary" /> : <Plus className="h-3 w-3" />}
                             </button>
                           )

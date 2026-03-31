@@ -16,6 +16,7 @@ import {
   getExplorerUrl,
   getExplorerName,
 } from "@/lib/duel-utils"
+import { ensureFlowEVMTestnet } from "@/lib/flow-wallet-fix"
 import { ASSET_TIERS, buildContractAssetArrays, getAllSupportedAssetArrays, getTierWeightTotals } from "@/lib/pyth-config"
 import { FACTORY_ABI, DUEL_ABI } from "@/lib/contracts"
 import { CheckCircle2, Loader2, Lock, ArrowRight, ArrowLeft, Plus, Minus, X, Shuffle, Zap, Wallet } from "lucide-react"
