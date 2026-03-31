@@ -1,8 +1,8 @@
-# 🛡️ ShieldVault - On-Chain Portfolio Duels
+# FlowIn-Dex - Binary Options Trading Through Custom Index Duels
 
-**Transparent Portfolio Performance Competition on Flow EVM**
+**Binary Options Trading Through Custom Index Duels**
 
-ShieldVault is a DeFi platform where two traders compete by building weighted asset portfolios. The current implementation uses Flow EVM with Pyth Network oracles for transparent on-chain settlement, with a future encrypted track planned using Zama's fhEVM technology.
+FlowIn-Dex is a decentralized binary options platform where traders compete by creating custom weighted asset indexes. Instead of buying traditional call/put options, users stake an amount betting that their custom index will outperform their opponent's index over a fixed time period. The current implementation uses Flow EVM with Pyth Network oracles for transparent on-chain settlement, with a future encrypted track planned using Zama's fhEVM technology.
 
 ![License](https://img.shields.io/badge/license-MIT-blue.svg)
 ![Solidity](https://img.shields.io/badge/solidity-0.8.24-green.svg)
@@ -10,36 +10,43 @@ ShieldVault is a DeFi platform where two traders compete by building weighted as
 
 ---
 
-## 📋 Table of Contents
+## Table of Contents
 
-- [Features](#-features)
-- [Architecture](#-architecture)
-- [Tech Stack](#-tech-stack)
-- [Getting Started](#-getting-started)
-- [Smart Contracts](#-smart-contracts)
-- [Backend API](#-backend-api)
-- [Frontend Application](#-frontend-application)
-- [How It Works](#-how-it-works)
-- [Wallet Compatibility](#-wallet-compatibility)
-- [Development](#-development)
-- [Testing](#-testing)
-- [Deployment](#-deployment)
-- [API Documentation](#-api-documentation)
-- [Troubleshooting](#-troubleshooting)
-- [Roadmap](#-roadmap)
-- [License](#-license)
+- [Features](#features)
+- [Architecture](#architecture)
+- [Tech Stack](#tech-stack)
+- [Getting Started](#getting-started)
+- [Smart Contracts](#smart-contracts)
+- [Backend API](#backend-api)
+- [Frontend Application](#frontend-application)
+- [How It Works](#how-it-works)
+- [Wallet Compatibility](#wallet-compatibility)
+- [Development](#development)
+- [Testing](#testing)
+- [Deployment](#deployment)
+- [API Documentation](#api-documentation)
+- [Troubleshooting](#troubleshooting)
+- [Roadmap](#roadmap)
+- [License](#license)
 
 ---
 
-## ✨ Features
+## Features
+
+### Binary Options Trading Model
+- **Custom Index Creation**: Build your own weighted asset index instead of buying traditional options
+- **Peer-to-Peer Betting**: Stake an amount betting your index will outperform your opponent's
+- **Fixed Time Windows**: Duels run for predetermined periods (60 seconds to 30 days)
+- **Winner Takes All**: Binary outcome - best performing index wins the entire prize pool
+- **No Premium Decay**: Unlike traditional options, no time decay or premium costs
 
 ### Core Functionality
-- **⚔️ 1v1 Duels**: Head-to-head portfolio performance competitions
-- **🎯 Tiered Assets**: 50/50 split requirement between Tier 1 (blue-chips) and Tier 2 (altcoins/stablecoins)
-- **📊 Real-time Prices**: Pyth Network oracle integration for accurate asset pricing
-- **🏆 Transparent Settlement**: Winner determined by on-chain portfolio performance calculation
-- **💰 Escrow System**: Entry fees locked in smart contracts, winner takes all
-- **🔍 Transaction Verification**: Flowscan explorer links for all major on-chain events
+- **1v1 Index Duels**: Head-to-head custom index performance competitions
+- **Tiered Assets**: 50/50 split requirement between Tier 1 (blue-chips) and Tier 2 (altcoins/stablecoins)
+- **Real-time Prices**: Pyth Network oracle integration for accurate asset pricing
+- **Transparent Settlement**: Winner determined by on-chain portfolio performance calculation
+- **Escrow System**: Entry stakes locked in smart contracts, winner takes all
+- **Transaction Verification**: Flowscan explorer links for all major on-chain events
 
 ### Asset Tiers
 - **Tier 1 (Blue-Chip)**: BTC, ETH, SOL, BNB, LINK
@@ -52,9 +59,9 @@ ShieldVault is a DeFi platform where two traders compete by building weighted as
 
 ---
 
-## 🏗️ Architecture
+## Architecture
 
-ShieldVault uses a dual-track architecture:
+FlowIn-Dex uses a dual-track architecture:
 
 1. **Transparent Track (Current Implementation)**: Flow EVM + Pyth oracles for public on-chain duels
 2. **Encrypted Track (Future)**: Zama fhEVM for privacy-preserving portfolio competitions
@@ -98,7 +105,7 @@ ShieldVault uses a dual-track architecture:
 
 ---
 
-## 🔧 Tech Stack
+## Tech Stack
 
 ### Smart Contracts
 - **Solidity**: 0.8.24
@@ -130,7 +137,7 @@ ShieldVault uses a dual-track architecture:
 
 ---
 
-## 🚀 Getting Started
+## Getting Started
 
 ### Prerequisites
 
@@ -142,8 +149,8 @@ ShieldVault uses a dual-track architecture:
 
 1. **Clone the repository**
 ```bash
-git clone https://github.com/yourusername/ShieldVault.git
-cd ShieldVault
+git clone https://github.com/yourusername/FlowIn-Dex.git
+cd FlowIn-Dex
 ```
 
 2. **Install contract dependencies**
@@ -219,7 +226,7 @@ Enter your wallet address and request FLOW tokens for testing.
 
 ---
 
-## 📜 Smart Contracts
+## Smart Contracts
 
 ### Contract Overview
 
@@ -278,7 +285,7 @@ Manages asset metadata and tier classifications.
 
 ---
 
-## 🖥️ Backend API
+## Backend API
 
 ### Starting the Backend
 
@@ -309,7 +316,7 @@ npm start
 
 ---
 
-## 🎨 Frontend Application
+## Frontend Application
 
 ### Key Pages
 
@@ -349,7 +356,52 @@ npm start
 
 ---
 
-## 🎮 How It Works
+## How It Works
+
+### Binary Options Trading Concept
+
+FlowIn-Dex reimagines binary options trading through custom index competition:
+
+**Traditional Binary Options:**
+- Buy a call/put option on a single asset
+- Pay a premium upfront
+- Bet on price going up or down
+- Fixed payout if correct, lose premium if wrong
+
+**FlowIn-Dex Index Duels:**
+- Create a custom weighted index of multiple assets
+- Stake an amount (no premium, just your bet)
+- Compete against another trader's index
+- Winner takes the entire prize pool (2x stake)
+
+**Key Advantages:**
+- **Diversification**: Spread risk across multiple assets instead of betting on one
+- **Strategy Expression**: Weight assets based on your market view
+- **No Premium Cost**: Your stake is returned if you win (plus opponent's stake)
+- **Peer-to-Peer**: Trade directly against another participant, not a market maker
+- **Transparent Odds**: 50/50 competition, not house-edge pricing
+
+### Example Scenario
+
+**Traditional Options Trade:**
+```
+Buy BTC call option at $70,000 strike
+Premium: $500
+If BTC > $70,000 at expiry: Win $1,000 (net +$500)
+If BTC < $70,000 at expiry: Lose $500
+```
+
+**FlowIn-Dex Index Duel:**
+```
+Create Index: 40% BTC, 30% ETH, 20% SOL, 10% LINK
+Stake: $500
+Opponent creates their index and stakes $500
+
+After 24 hours:
+Your index return: +3.5%
+Opponent index return: +2.1%
+Result: You win $1,000 (your $500 + opponent's $500)
+```
 
 ### Duel Lifecycle
 
@@ -363,16 +415,18 @@ contract              weights                  locked
 
 ### Detailed Flow
 
-#### 1. Duel Creation
-- Creator defines entry amount (min 0.001 FLOW), duration (60s - 30 days)
+#### 1. Duel Creation (Place Your Bet)
+- Creator defines stake amount (min 0.001 FLOW), duration (60s - 30 days)
+- Creates custom weighted index from available assets
 - Assets are classified into Tier 1 (50%) and Tier 2 (50%)
-- Entry fee locked in contract
+- Stake locked in contract as escrow
 - Duel ID generated and contract deployed
 - Transaction hash displayed with Flowscan link
 
-#### 2. Opponent Joins
-- Opponent deposits matching entry amount
-- Both participants can now submit portfolios
+#### 2. Opponent Joins (Match the Bet)
+- Opponent deposits matching stake amount
+- Creates their own custom weighted index
+- Both participants' stakes locked in escrow
 - State transitions to `Joined`
 - Transaction hash displayed with Flowscan link
 
@@ -397,22 +451,28 @@ contract              weights                  locked
 - On-chain price feeds updated
 - Transaction hash displayed with Flowscan link
 
-#### 6. Settlement
-- Contract calculates weighted returns for both portfolios
+#### 6. Settlement (Determine Winner)
+- Contract calculates weighted returns for both indexes
 - Uses micro-basis-point precision (×1,000,000)
-- Compares precise returns to determine winner
+- Compares precise returns to determine winner (binary outcome)
+- Best performing index wins
 - Handles exact ties (rare with micro-precision)
 - State transitions to `Settled`
 - Transaction hash displayed with Flowscan link
 
-#### 7. Payout
-- Winner receives total prize pool (2× entry amount)
+#### 7. Payout (Winner Takes All)
+- Winner receives total prize pool (2× stake amount)
 - Or 50/50 split in case of exact tie
-- Funds transferred from contract to winner
+- Funds transferred from escrow to winner
 - Duel finalized
 - Transaction hash displayed with Flowscan link
 
-### Portfolio Constraints
+**Payout Structure:**
+- Winner: 2× stake (100% return on investment)
+- Loser: 0 (loses entire stake)
+- Tie: Each gets their stake back (0% return)
+
+### Index Constraints
 
 - **Total Weight**: Must equal 100% (10000 basis points)
 - **Tier 1 Allocation**: Must equal 50% (5000 basis points)
@@ -420,7 +480,7 @@ contract              weights                  locked
 - **Minimum Assets**: At least 2 assets required
 - **Weight Range**: Each asset 0-100%
 
-### Example Portfolio
+### Example Index
 
 ```
 Tier 1 (50%):
@@ -436,19 +496,31 @@ Tier 1: 50% ✓
 Tier 2: 50% ✓
 ```
 
+### Why This Is Better Than Traditional Options
+
+| Feature | Traditional Options | FlowIn-Dex Index Duels |
+|---------|-------------------|----------------------|
+| **Upfront Cost** | Premium paid (lost if wrong) | Stake (returned if you win) |
+| **Diversification** | Single asset exposure | Multi-asset custom index |
+| **Time Decay** | Yes (theta decay) | No time decay |
+| **Counterparty** | Market maker / exchange | Peer-to-peer trader |
+| **Payout** | Fixed payout structure | Winner takes all (2x stake) |
+| **Strategy** | Limited (call/put only) | Unlimited (custom weights) |
+| **Transparency** | Opaque pricing models | Transparent on-chain settlement |
+
 ---
 
-## 🔌 Wallet Compatibility
+## Wallet Compatibility
 
 ### Recommended Wallets
 
 | Wallet | Status | Notes |
 |--------|--------|-------|
-| **MetaMask** | ✅ Recommended | Best compatibility with Flow EVM |
-| **Rainbow Wallet** | ✅ Supported | Works perfectly |
-| **WalletConnect** | ✅ Supported | Good for mobile |
-| **Coinbase Wallet** | ✅ Supported | Works well |
-| **Flow Wallet** | ⚠️ Not Recommended | Has cross-VM compatibility issues |
+| **MetaMask** | Recommended | Best compatibility with Flow EVM |
+| **Rainbow Wallet** | Supported | Works perfectly |
+| **WalletConnect** | Supported | Good for mobile |
+| **Coinbase Wallet** | Supported | Works well |
+| **Flow Wallet** | Not Recommended | Has cross-VM compatibility issues |
 
 ### Flow Wallet Issue
 
@@ -478,7 +550,7 @@ hostname=https://rest-mainnet.onflow.org
 
 ---
 
-## 🛠️ Development
+## Development
 
 ### Compile Contracts
 
@@ -539,7 +611,7 @@ Frontend runs on `http://localhost:3001`
 
 ---
 
-## 🚀 Deployment
+## Deployment
 
 ### Deploy Contracts to Flow EVM Testnet
 
@@ -592,7 +664,7 @@ npm start
 
 ---
 
-## 📚 API Documentation
+## API Documentation
 
 ### Base URL
 ```
@@ -608,7 +680,7 @@ Response:
 {
   "status": "healthy",
   "timestamp": "2026-04-01T12:00:00.000Z",
-  "service": "ShieldVault API",
+  "service": "FlowIn-Dex API",
   "version": "1.0.0"
 }
 ```
@@ -705,7 +777,7 @@ Response:
 
 ---
 
-## 🔧 Troubleshooting
+## Troubleshooting
 
 ### Common Issues
 
@@ -771,34 +843,38 @@ See `CACHE_FIX_INSTRUCTIONS.md` for details.
 
 ---
 
-## 🗺️ Roadmap
+## Roadmap
 
-### ✅ Phase 1: Transparent On-Chain MVP (Current)
+### Phase 1: Transparent On-Chain MVP (Current)
+- [x] Binary options through custom index competition
 - [x] Core duel contracts on Flow EVM
 - [x] Tiered asset system (50/50 split)
 - [x] Pyth oracle integration
 - [x] Micro-precision settlement (prevents false ties)
+- [x] Winner-takes-all payout mechanism
 - [x] Backend API with REST endpoints
 - [x] Frontend with RainbowKit wallet integration
 - [x] Flowscan transaction verification links
 - [x] Comprehensive testing and documentation
 
-### 🚧 Phase 2: Enhanced Features
-- [ ] Multi-round tournaments
-- [ ] Team duels (3v3, 5v5)
-- [ ] Leaderboard system
-- [ ] Historical analytics dashboard
+### Phase 2: Enhanced Features
+- [ ] Multi-round tournaments (bracket-style competitions)
+- [ ] Team duels (3v3, 5v5 index battles)
+- [ ] Leaderboard system (track best performing indexes)
+- [ ] Historical analytics dashboard (win rate, ROI tracking)
+- [ ] Variable payout structures (not just winner-takes-all)
+- [ ] Index templates (save and reuse successful strategies)
 - [ ] Mobile-responsive improvements
 - [ ] Social features (share duels, invite friends)
 
-### 🔮 Phase 3: Privacy Track (fhEVM)
+### Phase 3: Privacy Track (fhEVM)
 - [ ] Encrypted portfolio duels using Zama fhEVM
 - [ ] Client-side encryption with fhEVM SDK
 - [ ] Selective decryption (winner only)
 - [ ] ACL-based access control
 - [ ] Privacy-preserving leaderboards
 
-### 🌐 Phase 4: Cross-Chain Expansion
+### Phase 4: Cross-Chain Expansion
 - [ ] Deploy to additional EVM chains
 - [ ] Cross-chain duel support
 - [ ] Multi-chain asset support
@@ -806,7 +882,7 @@ See `CACHE_FIX_INSTRUCTIONS.md` for details.
 
 ---
 
-## 🤝 Contributing
+## Contributing
 
 We welcome contributions! Please follow these steps:
 
@@ -818,13 +894,13 @@ We welcome contributions! Please follow these steps:
 
 ---
 
-## 📄 License
+## License
 
 This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
 
 ---
 
-## 🙏 Acknowledgments
+## Acknowledgments
 
 - **Flow** - EVM-compatible blockchain infrastructure
 - **Pyth Network** - Decentralized oracle for price feeds
@@ -834,14 +910,14 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 
 ---
 
-## 📞 Contact & Support
+## Contact & Support
 
-- **GitHub Issues**: [Report bugs or request features](https://github.com/yourusername/ShieldVault/issues)
+- **GitHub Issues**: [Report bugs or request features](https://github.com/yourusername/FlowIn-Dex/issues)
 - **Documentation**: See project documentation files for detailed guides
 - **Block Explorer**: [Flowscan Testnet](https://evm-testnet.flowscan.io)
 
 ---
 
-Built with ❤️ for transparent and fair DeFi competition
+Built for transparent and fair DeFi competition
 
-**ShieldVault** - *Where performance speaks louder than words*
+**FlowIn-Dex** - Binary options trading reimagined through custom index competition
