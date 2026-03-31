@@ -6,24 +6,6 @@ import { ethers } from 'ethers';
 export const duelRoutes = Router();
 
 const ZERO_ADDRESS = '0x0000000000000000000000000000000000000000';
-
-/**
- * Concurrency-limited map — processes at most `concurrency` items at once.
- * Avoids blasting the RPC node with too many simultaneous eth_call requests.
- */
-async function pMap<T, R>(items: T[], fn: (item: T) => Promise<R>, concurrency = 3): Promise<R[]> {
-  const results: R[] = new Array(items.length);
-  let index = 0;
-  async function worker() {
-    while (index < items.length) {
-      const i = index++;
-      results[i] = await fn(items[i]);
-    }
-  }
-  const workers = Array.from({ length: Math.min(concurrency, items.length) }, worker);
-  await Promise.all(workers);
-  return results;
-}
 const PRICE_SCALE = 100_000_000;
 
 function normalizeSymbol(symbol: string): string {
@@ -118,12 +100,14 @@ duelRoutes.get('/', async (req: Request, res: Response) => {
     const service = getOnChainDuelService();
     const duels = await service.getAllDuels(Number(offset), Number(limit));
 
-    const fullDuels = await pMap(
-      duels,
-      async (d: any) => {
+    const fullDuels = await Promise.all(
+      duels.map(async (d: any) => {
         try {
-          const info = await service.getDuelInfo(d.duelAddress);
-          const createdAt = await service.getDuelCreatedAt(d.duelId);
+          const [info, createdAt] = await Promise.all([
+            service.getDuelInfo(d.duelAddress),
+            service.getDuelCreatedAt(d.duelId),
+          ]);
+
           return {
             duelId: d.duelId,
             duelAddress: d.duelAddress,
@@ -133,8 +117,7 @@ duelRoutes.get('/', async (req: Request, res: Response) => {
         } catch {
           return null;
         }
-      },
-      3
+      })
     );
 
     const filtered = fullDuels.filter((d) => d !== null);
@@ -527,12 +510,14 @@ duelRoutes.get('/user/:address/duels', async (req: Request, res: Response) => {
     const service = getOnChainDuelService();
     const duels = await service.getUserDuels(address, Number(offset), Number(limit));
 
-    const fullDuels = await pMap(
-      duels,
-      async (d: any) => {
+    const fullDuels = await Promise.all(
+      duels.map(async (d: any) => {
         try {
-          const info = await service.getDuelInfo(d.duelAddress);
-          const createdAt = await service.getDuelCreatedAt(d.duelId);
+          const [info, createdAt] = await Promise.all([
+            service.getDuelInfo(d.duelAddress),
+            service.getDuelCreatedAt(d.duelId),
+          ]);
+
           return {
             duelId: d.duelId,
             duelAddress: d.duelAddress,
@@ -542,8 +527,7 @@ duelRoutes.get('/user/:address/duels', async (req: Request, res: Response) => {
         } catch {
           return null;
         }
-      },
-      3
+      })
     );
 
     const filtered = fullDuels.filter((d) => d !== null);

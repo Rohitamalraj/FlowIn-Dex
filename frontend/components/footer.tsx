@@ -24,7 +24,7 @@ export default function Footer() {
             <div className="space-y-4 text-foreground">
               <div className="flex items-start gap-3">
                 <span className="text-accent mt-1">•</span>
-                <p className="text-sm">ShieldVault keeps your portfolio strategies encrypted at all times—before, during, and after settlement.</p>
+                <p className="text-sm">FlowIn-Dex keeps your portfolio strategies encrypted at all times—before, during, and after settlement.</p>
               </div>
               <div className="flex items-start gap-3">
                 <span className="text-accent mt-1">•</span>
@@ -62,9 +62,9 @@ export default function Footer() {
             <p className="text-foreground font-mono font-normal text-base">Keep Your Strategies Private</p>
           </div>
 
-          <a href="https://github.com/shieldvault" target="_blank" rel="noopener noreferrer">
+          <a href="https://github.com/flowin-dex" target="_blank" rel="noopener noreferrer">
             <button className="bg-primary text-primary-foreground px-8 py-4 rounded-full font-semibold text-lg whitespace-nowrap hover:scale-105 hover:shadow-[0_0_20px_hsl(var(--primary)/0.5)] transition-all duration-300 font-mono flex items-center gap-2">
-              Build on ShieldVault
+              Build on FlowIn-Dex
               <svg
                 width="20"
                 height="20"
@@ -82,7 +82,7 @@ export default function Footer() {
         </div>
 
         <div className="w-full px-6 py-4 border-t border-border flex md:flex-row items-center justify-between gap-2 flex-row">
-          <p className="text-muted-foreground text-sm font-mono">© 2026 ShieldVault | PL_Genesis Hackathon</p>
+          <p className="text-muted-foreground text-sm font-mono">© 2026 FlowIn-Dex | PL_Genesis Hackathon</p>
           <p className="text-muted-foreground text-sm font-mono">Confidential Finance on fhEVM</p>
         </div>
       </div>

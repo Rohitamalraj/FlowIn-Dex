@@ -108,3 +108,12 @@
 .animate-spin-slow {
   animation: spin-slow 20s linear infinite;
 }
+
+.flow-spline-scene .spline-watermark,
+.flow-spline-scene [class*="spline-watermark"],
+.flow-spline-scene a[href*="spline.design"] {
+  display: none !important;
+  opacity: 0 !important;
+  visibility: hidden !important;
+  pointer-events: none !important;
+}

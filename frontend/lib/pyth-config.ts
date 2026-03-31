@@ -134,6 +134,26 @@ export function getTierWeightTotals(symbols: string[], weights: number[]): { tie
   return { tier1, tier2 }
 }
 
+/** Build contract arrays for ALL supported assets — used to register full universe at duel creation */
+export function getAllSupportedAssetArrays(): {
+  assets: `0x${string}`[]
+  priceIds: `0x${string}`[]
+  tiers: number[]
+  syms: string[]
+} {
+  // Deduplicate by address (e.g. MATIC and POL share the same address)
+  const seenAddresses = new Set<string>()
+  const validSymbols: string[] = []
+  for (const s of Object.keys(ASSET_CONTRACT_ADDRESSES)) {
+    if (!PYTH_PRICE_IDS[s]) continue
+    const addr = ASSET_CONTRACT_ADDRESSES[s].toLowerCase()
+    if (seenAddresses.has(addr)) continue
+    seenAddresses.add(addr)
+    validSymbols.push(s)
+  }
+  return buildContractAssetArrays(validSymbols)
+}
+
 /** Given a list of asset symbols, build the arrays the contract expects */
 export function buildContractAssetArrays(symbols: string[]): {
   assets: `0x${string}`[]

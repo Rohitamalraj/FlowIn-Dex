@@ -44,15 +44,21 @@ export default function DuelCard({ duel, onJoin, compact = false }: DuelCardProp
 
       {/* Asset pills */}
       <div className="flex flex-wrap gap-1.5 mb-4">
-        {assetObjects.map((asset) => asset && (
-          <span
-            key={asset.symbol}
-            className="inline-flex items-center gap-1 rounded-full bg-muted/50 border border-border px-2 py-0.5 font-mono text-[11px] text-foreground"
-          >
-            <span className="text-primary">{asset.icon}</span>
-            {asset.symbol}
+        {assetObjects.length > 0 ? (
+          assetObjects.map((asset) => asset && (
+            <span
+              key={asset.symbol}
+              className="inline-flex items-center gap-1 rounded-full bg-muted/50 border border-border px-2 py-0.5 font-mono text-[11px] text-foreground"
+            >
+              <span className="text-primary">{asset.icon}</span>
+              {asset.symbol}
+            </span>
+          ))
+        ) : (
+          <span className="inline-flex items-center rounded-full bg-muted/30 border border-border px-2 py-0.5 font-mono text-[11px] text-muted-foreground">
+            Token metadata pending
           </span>
-        ))}
+        )}
       </div>
 
       {/* Participants */}

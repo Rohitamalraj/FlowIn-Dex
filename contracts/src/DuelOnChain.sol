@@ -315,6 +315,73 @@ contract DuelOnChain is Ownable {
     }
 
     /**
+     * @notice Settle duel with off-chain prices supplied by caller (e.g. from Pyth Hermes REST API).
+     * @dev Bypasses on-chain PythConsumer cache. Prices must be scaled by 1e8 (PRICE_SCALE).
+     *      Only callable by a duel participant.
+     * @param creatorEndPrices   End prices for each asset in creator's portfolio  (1e8 scale)
+     * @param opponentEndPrices  End prices for each asset in opponent's portfolio (1e8 scale)
+     * @param creatorStartPrices Start prices for each asset in creator's portfolio  (1e8 scale)
+     * @param opponentStartPrices Start prices for each asset in opponent's portfolio (1e8 scale)
+     */
+    function settle(
+        int256[] calldata creatorEndPrices,
+        int256[] calldata opponentEndPrices,
+        int256[] calldata creatorStartPrices,
+        int256[] calldata opponentStartPrices
+    ) external onlyParticipant {
+        require(
+            state == DuelState.Active || state == DuelState.SubmittedBoth,
+            "DuelOnChain: duel not ready to settle"
+        );
+        require(config.endTime > 0 && block.timestamp >= config.endTime, "DuelOnChain: duel not ended");
+        require(!settled, "DuelOnChain: already settled");
+        require(creatorEndPrices.length == creatorPortfolio.weights.length, "DuelOnChain: creator prices mismatch");
+        require(opponentEndPrices.length == opponentPortfolio.weights.length, "DuelOnChain: opponent prices mismatch");
+        require(creatorStartPrices.length == creatorPortfolio.weights.length, "DuelOnChain: creator start prices mismatch");
+        require(opponentStartPrices.length == opponentPortfolio.weights.length, "DuelOnChain: opponent start prices mismatch");
+
+        state = DuelState.Settling;
+
+        // Calculate creator return from supplied prices
+        int256 cReturn = 0;
+        for (uint256 i = 0; i < creatorPortfolio.weights.length; i++) {
+            require(creatorStartPrices[i] > 0 && creatorEndPrices[i] > 0, "DuelOnChain: invalid creator prices");
+            int256 assetReturn =
+                ((creatorEndPrices[i] - creatorStartPrices[i]) * int256(uint256(WEIGHT_PRECISION)) * int256(RETURN_PRECISION)) /
+                creatorStartPrices[i];
+            cReturn += (assetReturn * int256(uint256(creatorPortfolio.weights[i]))) / int256(uint256(WEIGHT_PRECISION));
+        }
+        creatorReturnPrecise = cReturn;
+
+        // Calculate opponent return from supplied prices
+        int256 oReturn = 0;
+        for (uint256 i = 0; i < opponentPortfolio.weights.length; i++) {
+            require(opponentStartPrices[i] > 0 && opponentEndPrices[i] > 0, "DuelOnChain: invalid opponent prices");
+            int256 assetReturn =
+                ((opponentEndPrices[i] - opponentStartPrices[i]) * int256(uint256(WEIGHT_PRECISION)) * int256(RETURN_PRECISION)) /
+                opponentStartPrices[i];
+            oReturn += (assetReturn * int256(uint256(opponentPortfolio.weights[i]))) / int256(uint256(WEIGHT_PRECISION));
+        }
+        opponentReturnPrecise = oReturn;
+
+        creatorReturn = roundPreciseReturnToBps(creatorReturnPrecise);
+        opponentReturn = roundPreciseReturnToBps(opponentReturnPrecise);
+
+        if (creatorReturnPrecise > opponentReturnPrecise) {
+            winner = creatorPortfolio.participant;
+        } else if (opponentReturnPrecise > creatorReturnPrecise) {
+            winner = opponentPortfolio.participant;
+        } else {
+            winner = address(0);
+        }
+
+        settled = true;
+        state = DuelState.Settled;
+
+        emit DuelSettled(config.duelId, winner, creatorReturn, opponentReturn);
+    }
+
+    /**
      * @notice Settle duel and determine winner
      */
     function settleDuel() internal {

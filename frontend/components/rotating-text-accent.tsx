@@ -1,7 +1,7 @@
 "use client"
 
 export default function RotatingTextAccent() {
-  const text = "-- ShieldVault Confidential Duels --- "
+  const text = "-- FlowIn-Dex Confidential Duels --- "
   const chars = text.split("")
 
   return (
@@ -9,7 +9,7 @@ export default function RotatingTextAccent() {
       <div className="relative w-full h-full">
         {/* Central logo */}
         <div className="absolute inset-0 flex items-center justify-center">
-          <img src="/circular-logo.svg" alt="Logo" className="w-12 h-12 md:w-16 md:h-16" />
+          <img src="/flow_logo.jpg" alt="Flow logo" className="w-12 h-12 md:w-16 md:h-16 rounded-full object-cover" />
         </div>
 
         {/* Rotating text */}

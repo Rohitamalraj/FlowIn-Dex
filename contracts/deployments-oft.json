@@ -1,0 +1,14 @@
+{
+  "flowEvmTestnet": {
+    "address": "0xB3D81978beF7F31F812137c892e0DAa5AA10d942",
+    "lzEndpoint": "0x6C7Ab2202C98C4227C5c46f1417D81144DA716Ff",
+    "deployer": "0x509849Da53330510825D2E20555362B29a8a4100",
+    "deployedAt": "2026-03-31T06:05:30.013Z"
+  },
+  "optimismSepolia": {
+    "address": "0xaEfCD2Ec782fA105C982c24e8A7c0cDD148ADad2",
+    "lzEndpoint": "0x6EDCE65403992e310A62460808c4b910D972f10f",
+    "deployer": "0x2c32743B801B9c3d53099334e2ac5a8DA39498bC",
+    "deployedAt": "2026-03-31T06:06:01.283Z"
+  }
+}

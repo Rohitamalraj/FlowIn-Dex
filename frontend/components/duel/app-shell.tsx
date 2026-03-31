@@ -43,7 +43,7 @@ export default function AppShell({ children }: AppShellProps) {
           {/* Logo */}
           <Link href="/" className="flex items-center gap-2 font-mono font-bold text-foreground hover:text-primary transition-colors">
             <span className="text-primary text-lg">⬡</span>
-            <span className="text-sm">ShieldVault</span>
+            <span className="text-sm">FlowIn-Dex</span>
           </Link>
 
           {/* Nav links – hidden on mobile */}

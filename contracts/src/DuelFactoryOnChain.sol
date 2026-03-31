@@ -149,7 +149,10 @@ contract DuelFactoryOnChain is Ownable {
         uint256 limit
     ) external view returns (bytes32[] memory duelIds, address[] memory duelAddresses) {
         bytes32[] memory userDuelIds = userDuels[user];
-        require(offset < userDuelIds.length, "DuelFactoryOnChain: invalid offset");
+        // Return empty arrays if user has no duels or offset is beyond length
+        if (userDuelIds.length == 0 || offset >= userDuelIds.length) {
+            return (new bytes32[](0), new address[](0));
+        }
 
         uint256 end = offset + limit;
         if (end > userDuelIds.length) {
@@ -187,7 +190,10 @@ contract DuelFactoryOnChain is Ownable {
         view
         returns (bytes32[] memory duelIds, address[] memory duelAddresses)
     {
-        require(offset < allDuelIds.length, "DuelFactoryOnChain: invalid offset");
+        // Return empty arrays if no duels exist or offset is beyond length
+        if (allDuelIds.length == 0 || offset >= allDuelIds.length) {
+            return (new bytes32[](0), new address[](0));
+        }
 
         uint256 end = offset + limit;
         if (end > allDuelIds.length) {

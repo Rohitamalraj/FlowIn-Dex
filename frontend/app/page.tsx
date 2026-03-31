@@ -8,7 +8,7 @@ import { ArrowUpRight, Lock, Shield, Eye, Zap, Users, TrendingUp } from "lucide-
 
 const STATS = [
   { label: "Total Duels",    value: "1,284",     icon: "⬡" },
-  { label: "Total Volume",   value: "348 ETH",   icon: "◈" },
+  { label: "Total Volume",   value: "348 FLOW",   icon: "◈" },
   { label: "Strategies",     value: "100% Encrypted", icon: "🔒" },
   { label: "Active Duels",   value: "47",        icon: "⚔" },
 ]
@@ -108,7 +108,7 @@ export default function Home() {
                 Duel Lifecycle
               </span>
               <h2 className="text-2xl md:text-3xl font-bold text-foreground" style={{ fontFamily: "var(--font-montserrat)" }}>
-                How ShieldVault Works
+                How FlowIn-Dex Works
               </h2>
               <p className="font-mono text-sm text-muted-foreground mt-2 max-w-lg mx-auto">
                 Six steps from strategy creation to winner reveal — all encrypted by default.
@@ -184,7 +184,7 @@ export default function Home() {
             <div className="flex flex-col gap-4 max-w-5xl">
               <div className="flex items-center gap-4">
                 <span className="text-accent font-mono text-sm">Platform</span>
-                <span className="text-foreground font-mono text-sm">ShieldVault</span>
+                <span className="text-foreground font-mono text-sm">FlowIn-Dex</span>
               </div>
               <div className="flex items-center gap-4">
                 <span className="text-accent font-mono text-sm">Purpose</span>

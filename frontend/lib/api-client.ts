@@ -1,5 +1,5 @@
 /**
- * API Client — typed wrappers around all IndexFlow backend endpoints.
+ * API Client — typed wrappers around all FlowIn-Dex backend endpoints.
  * Base URL is read from NEXT_PUBLIC_API_URL (default: http://localhost:3000)
  */
 
@@ -148,6 +148,7 @@ export interface DuelPortfolioResponse {
   portfolio: {
     participant: string
     symbols: string[]
+    priceIds?: string[]
     weights: number[]
     submitted: boolean
     return: string

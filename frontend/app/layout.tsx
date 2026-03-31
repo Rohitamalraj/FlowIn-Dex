@@ -17,9 +17,9 @@ const montserrat = Montserrat({
 })
 
 export const metadata: Metadata = {
-  title: "ShieldVault - Confidential Portfolio Duels",
+  title: "FlowIn-Dex - Confidential Portfolio Duels",
   description: "Encrypted competitive portfolio platform on Zama fhEVM. Your strategies stay private.",
-  generator: "ShieldVault",
+  generator: "FlowIn-Dex",
 }
 
 export default function RootLayout({

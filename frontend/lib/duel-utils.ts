@@ -99,3 +99,25 @@ export function formatEth(amount: number): string {
 export function formatUsd(amount: number): string {
   return new Intl.NumberFormat("en-US", { style: "currency", currency: "USD", maximumFractionDigits: 0 }).format(amount)
 }
+
+// ─── Explorer Links ───────────────────────────────────────────────────────────
+
+export function getExplorerUrl(chainId: number, txHash: string): string {
+  // Flow EVM Testnet
+  if (chainId === 545) {
+    return `https://evm-testnet.flowscan.io/tx/${txHash}`
+  }
+  // Flow EVM Mainnet
+  if (chainId === 747) {
+    return `https://evm.flowscan.io/tx/${txHash}`
+  }
+  // Fallback to generic format
+  return `https://evm-testnet.flowscan.io/tx/${txHash}`
+}
+
+export function getExplorerName(chainId: number): string {
+  if (chainId === 545 || chainId === 747) {
+    return "Flowscan"
+  }
+  return "Explorer"
+}

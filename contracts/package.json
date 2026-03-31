@@ -18,7 +18,8 @@
     "test-1min-duel": "hardhat run scripts/test1MinDuel.ts --network flowEvmTestnet",
     "test-on-chain-duel": "hardhat run scripts/testOnChainDuel.ts --network flowEvmTestnet",
     "deploy-on-chain": "hardhat run scripts/deployOnChain.ts --network flowEvmTestnet",
-    "deploy-zama-encrypted": "hardhat run scripts/deployZamaEncrypted.ts --network zama"
+    "deploy-zama-encrypted": "hardhat run scripts/deployZamaEncrypted.ts --network zama",
+    "set-price-age": "hardhat run scripts/setPriceAge.ts --network flowEvmTestnet"
   },
   "keywords": [
     "fhEVM",

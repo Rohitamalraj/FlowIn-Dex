@@ -1,9 +1,6 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.24;
 
-import "fhevm/lib/TFHE.sol";
-import "fhevm/gateway/GatewayCaller.sol";
-
 /**
  * @title AssetRegistry
  * @notice Manages asset tier classifications for ShieldVault duels

@@ -17,7 +17,7 @@ const LIFECYCLE_STEPS = [
   {
     icon: "⛓️",
     title: "Submit Encrypted Weights",
-    detail: "Encrypted weight ciphertexts are submitted to the ShieldVault smart contract on Zama's fhEVM. The contract stores euint32 values — no plaintext ever touches the chain.",
+    detail: "Encrypted weight ciphertexts are submitted to the FlowIn-Dex smart contract on Zama's fhEVM. The contract stores euint32 values — no plaintext ever touches the chain.",
   },
   {
     icon: "📈",
@@ -73,7 +73,7 @@ export default function HowItWorksPage() {
     <AppShell>
       <Hero
         breadcrumbs={[{ label: "Home", href: "/" }, { label: "How It Works" }]}
-        title="How ShieldVault Works"
+        title="How FlowIn-Dex Works"
         subtitle="A step-by-step guide to confidential portfolio competition on Zama fhEVM."
         badge="Architecture"
       />

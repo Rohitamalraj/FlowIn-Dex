@@ -19,7 +19,7 @@ export default function Header() {
         <div className="flex items-center gap-3">
           <Link href="/" className="flex items-center gap-2">
             <span className="font-mono font-bold text-primary text-xl">⬡</span>
-            <span className="font-mono font-bold text-foreground text-sm hidden sm:block">ShieldVault</span>
+            <span className="font-mono font-bold text-foreground text-sm hidden sm:block">FlowIn-Dex</span>
           </Link>
         </div>
 

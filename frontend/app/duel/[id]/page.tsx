@@ -16,6 +16,8 @@ import {
   formatEth,
   formatCountdown,
   formatTimeAgo,
+  getExplorerUrl,
+  getExplorerName,
 } from "@/lib/duel-utils"
 import {
   apiGetBatchPricesAt,
@@ -26,6 +28,7 @@ import {
 } from "@/lib/api-client"
 import { useAccount, usePublicClient, useSwitchChain, useWriteContract } from "wagmi"
 import { DUEL_ABI } from "@/lib/contracts"
+import { buildContractAssetArrays, PYTH_PRICE_IDS } from "@/lib/pyth-config"
 
 const FLOW_EVM_TESTNET_CHAIN_ID = Number(process.env.NEXT_PUBLIC_FLOW_EVM_CHAIN_ID ?? "545")
 const FLOW_EVM_TESTNET_NAME = "Flow EVM Testnet"
@@ -39,9 +42,75 @@ type ChartPoint = {
   opponent: number
 }
 
+type PendingPortfolio = {
+  symbols: string[]
+  weights: number[]
+}
+
+type DuelPortfolioData = {
+  participant: string
+  symbols: string[]
+  priceIds?: string[]
+  weights: number[]
+  submitted: boolean
+  return: string
+}
+
+const PRICE_ID_TO_SYMBOL = Object.entries(PYTH_PRICE_IDS).reduce<Record<string, string>>((acc, [symbol, id]) => {
+  const key = String(id).toLowerCase()
+  if (!acc[key] && symbol !== "POL") {
+    acc[key] = symbol
+  }
+  return acc
+}, {})
+
+function normalizePortfolio(portfolio: DuelPortfolioData | undefined): DuelPortfolioData | undefined {
+  if (!portfolio) return undefined
+
+  let symbols = Array.isArray(portfolio.symbols)
+    ? portfolio.symbols
+        .map((s) => String(s || "").trim().toUpperCase())
+        .filter((s) => s.length > 0)
+    : []
+
+  let weights = Array.isArray(portfolio.weights)
+    ? portfolio.weights.map((w) => Number(w)).filter((w) => Number.isFinite(w) && w > 0)
+    : []
+
+  let priceIds = Array.isArray(portfolio.priceIds)
+    ? portfolio.priceIds.map((id) => String(id || "").trim()).filter((id) => id.length > 0)
+    : []
+
+  if (symbols.length === 0 && priceIds.length > 0 && weights.length > 0) {
+    const paired = priceIds
+      .map((id, idx) => ({
+        symbol: PRICE_ID_TO_SYMBOL[id.toLowerCase()],
+        weight: weights[idx],
+        priceId: id,
+      }))
+      .filter((item) => Boolean(item.symbol) && Number.isFinite(item.weight) && item.weight > 0)
+
+    symbols = paired.map((item) => item.symbol as string)
+    weights = paired.map((item) => item.weight)
+    priceIds = paired.map((item) => item.priceId)
+  }
+
+  const minLength = Math.min(symbols.length, weights.length)
+
+  return {
+    participant: String(portfolio.participant || ""),
+    symbols: symbols.slice(0, minLength),
+    priceIds,
+    weights: weights.slice(0, minLength),
+    submitted: Boolean(portfolio.submitted),
+    return: String(portfolio.return ?? "0"),
+  }
+}
+
 function mapStateToStatus(state: string): DuelStatus {
   if (state === "Created") return DuelStatus.OPEN
-  if (state === "Joined" || state === "SubmittedBoth") return DuelStatus.JOINED
+  if (state === "Joined") return DuelStatus.JOINED
+  if (state === "SubmittedBoth") return DuelStatus.LOCKED
   if (state === "Active" || state === "Locked") return DuelStatus.LOCKED
   if (state === "Settling") return DuelStatus.SETTLING
   if (state === "Settled") return DuelStatus.SETTLED
@@ -95,9 +164,13 @@ export default function DuelDetailPage() {
   const [isSettlingAction, setIsSettlingAction] = useState(false)
   const [isPayoutAction, setIsPayoutAction] = useState(false)
   const [isSplitAction, setIsSplitAction] = useState(false)
+  const [isSubmittingStartAction, setIsSubmittingStartAction] = useState(false)
   const [actionError, setActionError] = useState<string | null>(null)
   const [chartData, setChartData] = useState<ChartPoint[]>([])
+  const [pendingCreatorPortfolio, setPendingCreatorPortfolio] = useState<PendingPortfolio | null>(null)
   const [clockSec, setClockSec] = useState(() => Math.floor(Date.now() / 1000))
+  const [lastTxHash, setLastTxHash] = useState<string | null>(null)
+  const [lastTxType, setLastTxType] = useState<string | null>(null)
 
   useEffect(() => {
     const timer = window.setInterval(() => {
@@ -116,6 +189,13 @@ export default function DuelDetailPage() {
 
   const rawDuel = data?.duel
   const duelAddress = rawDuel?.duelAddress as `0x${string}` | undefined
+
+  const createdAtSeconds =
+    typeof rawDuel?.createdAt === "number" && rawDuel.createdAt > 0
+      ? rawDuel.createdAt
+      : typeof rawDuel?.startTime === "number" && rawDuel.startTime > 0
+        ? rawDuel.startTime
+        : Math.floor(Date.now() / 1000)
 
   const status = rawDuel ? mapStateToStatus(rawDuel.state) : DuelStatus.OPEN
   const isSettled = status === DuelStatus.SETTLED
@@ -155,10 +235,10 @@ export default function DuelDetailPage() {
               isWinner: opponentIsWinner,
             }
           : undefined,
-        assetUniverse: rawDuel.assetUniverse?.length ? rawDuel.assetUniverse : ["BTC", "ETH", "SOL"],
+        assetUniverse: rawDuel.assetUniverse?.length ? rawDuel.assetUniverse : [],
         entryAmountEth: parseFloat(rawDuel.entryAmountFormatted),
         durationSeconds: Number(rawDuel.duration || 0),
-        createdAt: new Date(((rawDuel.createdAt ?? rawDuel.startTime ?? Math.floor(Date.now() / 1000)) * 1000)),
+        createdAt: new Date(createdAtSeconds * 1000),
         startTime: rawDuel.startTime ? new Date(rawDuel.startTime * 1000) : undefined,
         endTime: rawDuel.endTime ? new Date(rawDuel.endTime * 1000) : undefined,
         winnerAddress: rawDuel.winner || undefined,
@@ -201,19 +281,26 @@ export default function DuelDetailPage() {
   const creatorPortfolioQuery = useQuery({
     queryKey: ["duel-creator-portfolio", duelAddress],
     queryFn: () => apiGetCreatorPortfolio(duelAddress as string),
-    enabled: Boolean(duelAddress) && canRevealStrategies,
+    enabled: Boolean(duelAddress),
     refetchInterval: 15000,
   })
 
   const opponentPortfolioQuery = useQuery({
     queryKey: ["duel-opponent-portfolio", duelAddress],
     queryFn: () => apiGetOpponentPortfolio(duelAddress as string),
-    enabled: Boolean(duelAddress) && canRevealStrategies,
+    enabled: Boolean(duelAddress),
     refetchInterval: 15000,
   })
 
-  const creatorPortfolio = creatorPortfolioQuery.data?.portfolio
-  const opponentPortfolio = opponentPortfolioQuery.data?.portfolio
+  const creatorPortfolio = useMemo(
+    () => normalizePortfolio(creatorPortfolioQuery.data?.portfolio as DuelPortfolioData | undefined),
+    [creatorPortfolioQuery.data?.portfolio]
+  )
+
+  const opponentPortfolio = useMemo(
+    () => normalizePortfolio(opponentPortfolioQuery.data?.portfolio as DuelPortfolioData | undefined),
+    [opponentPortfolioQuery.data?.portfolio]
+  )
 
   const priceSymbols = useMemo(() => {
     const set = new Set<string>()
@@ -243,18 +330,6 @@ export default function DuelDetailPage() {
     refetchIntervalInBackground: isDuelWindowActive,
   })
 
-  const endPricesQuery = useQuery({
-    queryKey: ["duel-end-prices", duelAddress, duelEndTimestampSec, priceSymbolsKey],
-    queryFn: () => apiGetBatchPricesAt(priceSymbols, duelEndTimestampSec as number),
-    enabled:
-      Boolean(duelAddress) &&
-      canRevealStrategies &&
-      priceSymbols.length > 0 &&
-      Boolean(duelEndTimestampSec) &&
-      hasDuelEnded,
-    staleTime: Infinity,
-  })
-
   useEffect(() => {
     if (!duelAddress || !canRevealStrategies) return
     if (!hasDuelEnded) return
@@ -269,6 +344,48 @@ export default function DuelDetailPage() {
   useEffect(() => {
     setChartData([])
   }, [duelAddress])
+
+  useEffect(() => {
+    if (!duelAddress) {
+      setPendingCreatorPortfolio(null)
+      return
+    }
+
+    const storageKey = `pending-portfolio-${duelAddress.toLowerCase()}`
+    const raw = localStorage.getItem(storageKey)
+    if (!raw) {
+      setPendingCreatorPortfolio(null)
+      return
+    }
+
+    try {
+      const parsed = JSON.parse(raw)
+      const symbols = Array.isArray(parsed?.symbols)
+        ? parsed.symbols.filter((s: unknown): s is string => typeof s === "string" && s.length > 0)
+        : []
+      const weights = Array.isArray(parsed?.weights)
+        ? parsed.weights
+            .map((w: unknown) => Number(w))
+            .filter((w: number) => Number.isFinite(w) && w > 0)
+        : []
+
+      if (symbols.length >= 2 && symbols.length === weights.length) {
+        setPendingCreatorPortfolio({ symbols, weights })
+      } else {
+        setPendingCreatorPortfolio(null)
+      }
+    } catch {
+      setPendingCreatorPortfolio(null)
+    }
+  }, [duelAddress])
+
+  useEffect(() => {
+    if (!duelAddress || !creatorPortfolio?.submitted) return
+
+    const storageKey = `pending-portfolio-${duelAddress.toLowerCase()}`
+    localStorage.removeItem(storageKey)
+    setPendingCreatorPortfolio((prev) => (prev ? null : prev))
+  }, [duelAddress, creatorPortfolio?.submitted])
 
   useEffect(() => {
     if (hasDuelEnded) return
@@ -374,6 +491,12 @@ export default function DuelDetailPage() {
   const viewerAddressLower = address?.toLowerCase()
   const firstPlayerLower = duel.creator.address.toLowerCase()
   const secondPlayerLower = duel.opponent?.address?.toLowerCase()
+  const hasOpponentJoined = Boolean(
+    duel.opponent && duel.opponent.address !== "0x0000000000000000000000000000000000000000"
+  )
+  const creatorHasSubmitted = Boolean(creatorPortfolio?.submitted)
+  const opponentHasSubmitted = Boolean(opponentPortfolio?.submitted)
+  const isViewerCreator = Boolean(viewerAddressLower && viewerAddressLower === firstPlayerLower)
   const isViewerParticipant = Boolean(
     viewerAddressLower &&
       (viewerAddressLower === firstPlayerLower || (secondPlayerLower && viewerAddressLower === secondPlayerLower))
@@ -393,7 +516,106 @@ export default function DuelDetailPage() {
       viewerAddressLower !== winnerAddressLower
   )
   const isRewardClaimable = isSettled && escrowBalanceWei > BigInt(0)
-  const canShowSettleAction = hasDuelEnded && canSettleCheck && !isSettled && !isSettling && !isCancelled && isViewerParticipant
+  const isSubmittedBothPreActivation = rawDuel.state === "SubmittedBoth"
+  const canShowSettleAction =
+    hasDuelEnded &&
+    canSettleCheck &&
+    !isSettled &&
+    !isSettling &&
+    !isCancelled &&
+    !isSubmittedBothPreActivation &&
+    isViewerParticipant
+  const canSubmitSavedCreatorPortfolio = Boolean(
+    duelAddress &&
+      status === DuelStatus.JOINED &&
+      hasOpponentJoined &&
+      isViewerCreator &&
+      !creatorHasSubmitted &&
+      pendingCreatorPortfolio
+  )
+
+  const handleSubmitSavedPortfolioAndStart = async () => {
+    if (!duelAddress || !pendingCreatorPortfolio || !isConnected || !publicClient) {
+      setActionError("Connect wallet before submitting your saved portfolio.")
+      return
+    }
+
+    if (!isViewerCreator) {
+      setActionError("Only the creator wallet can submit the saved creator portfolio.")
+      return
+    }
+
+    if (chainId !== FLOW_EVM_TESTNET_CHAIN_ID) {
+      if (!switchChainAsync) {
+        setActionError(`Switch wallet to ${FLOW_EVM_TESTNET_NAME} (chain ${FLOW_EVM_TESTNET_CHAIN_ID}).`)
+        return
+      }
+
+      try {
+        await switchChainAsync({ chainId: FLOW_EVM_TESTNET_CHAIN_ID })
+        setActionError(`Network switched to ${FLOW_EVM_TESTNET_NAME}. Click submit again.`)
+      } catch (switchError: any) {
+        setActionError(
+          switchError?.shortMessage ||
+            switchError?.message ||
+            `Switch wallet to ${FLOW_EVM_TESTNET_NAME} (chain ${FLOW_EVM_TESTNET_CHAIN_ID}).`
+        )
+      }
+      return
+    }
+
+    setIsSubmittingStartAction(true)
+    setActionError(null)
+
+    try {
+      const { assets, priceIds } = buildContractAssetArrays(pendingCreatorPortfolio.symbols)
+
+      const submitHash = await writeContractAsync({
+        chainId: FLOW_EVM_TESTNET_CHAIN_ID,
+        address: duelAddress,
+        abi: DUEL_ABI,
+        functionName: "submitPortfolio",
+        args: [assets, priceIds, pendingCreatorPortfolio.weights],
+        gas: 500_000n,
+      })
+
+      const submitReceipt = await publicClient.waitForTransactionReceipt({ hash: submitHash, confirmations: 1 })
+      if (submitReceipt.status !== "success") {
+        throw new Error("Portfolio submission reverted")
+      }
+
+      setLastTxHash(submitHash)
+      setLastTxType("Portfolio Submission")
+
+      try {
+        const activateHash = await writeContractAsync({
+          chainId: FLOW_EVM_TESTNET_CHAIN_ID,
+          address: duelAddress,
+          abi: DUEL_ABI,
+          functionName: "activateDuel",
+          gas: 300_000n,
+        })
+        await publicClient.waitForTransactionReceipt({ hash: activateHash, confirmations: 1 })
+        setLastTxHash(activateHash)
+        setLastTxType("Duel Activation")
+      } catch (activateErr: any) {
+        const activateMessage = activateErr?.shortMessage || activateErr?.message || ""
+        console.warn("[DuelDetail] activateDuel skipped after creator submission", {
+          activateMessage,
+        })
+      }
+
+      localStorage.removeItem(`pending-portfolio-${duelAddress.toLowerCase()}`)
+      setPendingCreatorPortfolio(null)
+      await Promise.all([refetch(), creatorPortfolioQuery.refetch(), opponentPortfolioQuery.refetch()])
+    } catch (err: any) {
+      console.error(err)
+      const message = err?.shortMessage || err?.message || "Failed to submit creator portfolio"
+      setActionError(message)
+    } finally {
+      setIsSubmittingStartAction(false)
+    }
+  }
 
   const handleSettle = async () => {
     if (!duelAddress || !isConnected || !publicClient) {
@@ -473,6 +695,9 @@ export default function DuelDetailPage() {
         throw new Error("Settlement transaction reverted")
       }
 
+      setLastTxHash(hash)
+      setLastTxType("Duel Settlement")
+
       await refetch()
     } catch (err: any) {
       console.error(err)
@@ -538,6 +763,9 @@ export default function DuelDetailPage() {
         throw new Error("Payout transaction reverted")
       }
 
+      setLastTxHash(hash)
+      setLastTxType("Reward Payout")
+
       await refetch()
     } catch (err: any) {
       console.error(err)
@@ -585,6 +813,9 @@ export default function DuelDetailPage() {
         throw new Error("Split payout transaction reverted")
       }
 
+      setLastTxHash(hash)
+      setLastTxType("Tie Split Payout")
+
       await refetch()
     } catch (err: any) {
       console.error(err)
@@ -611,13 +842,9 @@ export default function DuelDetailPage() {
       .map(([symbol, value]) => [symbol, value.price])
   )
 
-  const displayPriceMap = hasDuelEnded
-    ? (endPricesQuery.data?.prices ?? livePriceMap)
-    : livePriceMap
-
   const tokenRows = tokenUniverseSymbols.map((symbol) => {
     const meta = SUPPORTED_ASSETS.find((a) => a.symbol === symbol)
-    const live = displayPriceMap[symbol]?.price
+    const live = livePriceMap[symbol]?.price
     const start = startPriceMap[symbol]?.price
     const duelChangePct =
       typeof live === "number" && typeof start === "number" && start > 0
@@ -634,13 +861,13 @@ export default function DuelDetailPage() {
   })
 
   const creatorIndexValue = creatorPortfolio
-    ? computeIndexValue(creatorPortfolio.symbols, creatorPortfolio.weights, displayPriceMap, baselinePriceMap)
+    ? computeIndexValue(creatorPortfolio.symbols, creatorPortfolio.weights, livePriceMap, baselinePriceMap)
     : chartData.length
       ? chartData[chartData.length - 1].creator
       : 100
 
   const opponentIndexValue = opponentPortfolio
-    ? computeIndexValue(opponentPortfolio.symbols, opponentPortfolio.weights, displayPriceMap, baselinePriceMap)
+    ? computeIndexValue(opponentPortfolio.symbols, opponentPortfolio.weights, livePriceMap, baselinePriceMap)
     : chartData.length
       ? chartData[chartData.length - 1].opponent
       : 100
@@ -649,6 +876,11 @@ export default function DuelDetailPage() {
   const opponentPnL = opponentIndexValue - 100
   const firstPlayerAddress = truncateAddress(duel.creator.address)
   const secondPlayerAddress = duel.opponent ? truncateAddress(duel.opponent.address) : "Pending address"
+  const endsDisplay = duel.endTime
+    ? duel.endTime.getTime() > Date.now()
+      ? `in ${formatCountdown(duel.endTime)}`
+      : formatTimeAgo(duel.endTime)
+    : null
 
   return (
     <AppShell>
@@ -725,9 +957,7 @@ export default function DuelDetailPage() {
             {isSettled && !isTie && isConnectedWinner && !isRewardClaimable && (
               <div className="rounded-2xl border border-primary/30 bg-primary/10 px-5 py-3 text-center min-w-[190px]">
                 <p className="font-mono text-xs text-muted-foreground mb-1">Reward</p>
-                <p className="font-mono text-sm font-bold text-primary flex items-center justify-center gap-1.5">
-                  <Trophy className="h-4 w-4" /> Reward Collected
-                </p>
+                <p className="font-mono text-sm font-bold text-primary">Already Collected</p>
               </div>
             )}
 
@@ -743,6 +973,64 @@ export default function DuelDetailPage() {
         {actionError && (
           <div className="mb-6 rounded-xl border border-red-500/30 bg-red-500/8 p-4">
             <p className="font-mono text-xs text-red-400">{actionError}</p>
+          </div>
+        )}
+
+        {lastTxHash && lastTxType && (
+          <div className="mb-6 rounded-xl border border-primary/30 bg-primary/8 p-4">
+            <div className="flex items-center justify-between gap-4">
+              <div className="flex-1">
+                <p className="font-mono text-xs text-primary font-semibold mb-1">✓ {lastTxType} Confirmed</p>
+                <p className="font-mono text-[11px] text-muted-foreground">
+                  Transaction: {truncateAddress(lastTxHash, 8)}
+                </p>
+              </div>
+              <a
+                href={getExplorerUrl(FLOW_EVM_TESTNET_CHAIN_ID, lastTxHash)}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="rounded-full border border-primary/50 bg-primary/20 text-primary px-4 py-2 font-mono text-xs font-semibold hover:bg-primary/30 transition-colors flex items-center gap-1.5"
+              >
+                View on {getExplorerName(FLOW_EVM_TESTNET_CHAIN_ID)}
+                <svg className="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
+                </svg>
+              </a>
+            </div>
+          </div>
+        )}
+
+        {status === DuelStatus.JOINED && hasOpponentJoined && (
+          <div className="mb-6 rounded-xl border border-amber-400/30 bg-amber-400/8 p-4 flex flex-col gap-3">
+            <p className="font-mono text-xs text-amber-200">
+              This duel is waiting for both portfolio submissions before it can move to Active.
+            </p>
+
+            {canSubmitSavedCreatorPortfolio && (
+              <button
+                onClick={handleSubmitSavedPortfolioAndStart}
+                disabled={isSubmittingStartAction || isSwitchingChain}
+                className="self-start rounded-full border border-primary/50 bg-primary/20 text-primary px-4 py-2 font-mono text-xs font-semibold hover:bg-primary/30 disabled:opacity-50"
+              >
+                {isSwitchingChain
+                  ? "Switching..."
+                  : isSubmittingStartAction
+                    ? "Submitting..."
+                    : "Submit Saved Portfolio & Start"}
+              </button>
+            )}
+
+            {isViewerCreator && !creatorHasSubmitted && !pendingCreatorPortfolio && (
+              <p className="font-mono text-[11px] text-amber-100/80">
+                Creator portfolio not found in local storage. Rebuild and submit from the creator wallet to start this duel.
+              </p>
+            )}
+
+            {!isViewerCreator && (
+              <p className="font-mono text-[11px] text-amber-100/80">
+                Waiting for creator wallet to submit its portfolio.
+              </p>
+            )}
           </div>
         )}
 
@@ -896,26 +1184,22 @@ export default function DuelDetailPage() {
                   <span className="font-mono text-[11px] text-muted-foreground">Duel window closed</span>
                 </div>
 
-                {endPricesQuery.isLoading ? (
-                  <p className="font-mono text-xs text-muted-foreground text-center py-4">Loading final performance data...</p>
-                ) : (
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                    <div className="rounded-xl border border-border bg-background px-4 py-3">
-                      <p className="font-mono text-[10px] text-muted-foreground mb-1">{firstPlayerAddress} Final Performance</p>
-                      <p className="font-mono text-sm font-semibold text-foreground">Index {creatorIndexValue.toFixed(2)}</p>
-                      <p className={`font-mono text-xs ${creatorPnL >= 0 ? "text-emerald-400" : "text-red-400"}`}>
-                        {creatorPnL >= 0 ? "+" : ""}{creatorPnL.toFixed(2)}% final
-                      </p>
-                    </div>
-                    <div className="rounded-xl border border-border bg-background px-4 py-3">
-                      <p className="font-mono text-[10px] text-muted-foreground mb-1">{secondPlayerAddress} Final Performance</p>
-                      <p className="font-mono text-sm font-semibold text-foreground">Index {opponentIndexValue.toFixed(2)}</p>
-                      <p className={`font-mono text-xs ${opponentPnL >= 0 ? "text-emerald-400" : "text-red-400"}`}>
-                        {opponentPnL >= 0 ? "+" : ""}{opponentPnL.toFixed(2)}% final
-                      </p>
-                    </div>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div className="rounded-xl border border-border bg-background px-4 py-3">
+                    <p className="font-mono text-[10px] text-muted-foreground mb-1">{firstPlayerAddress} Final Performance</p>
+                    <p className="font-mono text-sm font-semibold text-foreground">Index {creatorIndexValue.toFixed(2)}</p>
+                    <p className={`font-mono text-xs ${creatorPnL >= 0 ? "text-emerald-400" : "text-red-400"}`}>
+                      {creatorPnL >= 0 ? "+" : ""}{creatorPnL.toFixed(2)}% final
+                    </p>
                   </div>
-                )}
+                  <div className="rounded-xl border border-border bg-background px-4 py-3">
+                    <p className="font-mono text-[10px] text-muted-foreground mb-1">{secondPlayerAddress} Final Performance</p>
+                    <p className="font-mono text-sm font-semibold text-foreground">Index {opponentIndexValue.toFixed(2)}</p>
+                    <p className={`font-mono text-xs ${opponentPnL >= 0 ? "text-emerald-400" : "text-red-400"}`}>
+                      {opponentPnL >= 0 ? "+" : ""}{opponentPnL.toFixed(2)}% final
+                    </p>
+                  </div>
+                </div>
               </div>
             )}
 
@@ -969,7 +1253,7 @@ export default function DuelDetailPage() {
                       ? "border-primary/40 bg-primary/10 text-primary"
                       : "border-border text-muted-foreground"
                   }`}>
-                    {isSettled ? (duel.creator.isWinner ? "Winner" : "Loser") : duel.creator.hasSubmitted ? "Submitted" : "Pending"}
+                    {isSettled ? (duel.creator.isWinner ? "Winner" : "Loser") : creatorHasSubmitted ? "Submitted" : "Pending"}
                   </span>
                 </div>
 
@@ -983,7 +1267,7 @@ export default function DuelDetailPage() {
                         ? "border-primary/40 bg-primary/10 text-primary"
                         : "border-border text-muted-foreground"
                     }`}>
-                      {isSettled ? (duel.opponent.isWinner ? "Winner" : "Loser") : duel.opponent.hasSubmitted ? "Submitted" : "Pending"}
+                      {isSettled ? (duel.opponent.isWinner ? "Winner" : "Loser") : opponentHasSubmitted ? "Submitted" : "Pending"}
                     </span>
                   </div>
                 ) : (
@@ -1004,7 +1288,7 @@ export default function DuelDetailPage() {
                 ["Prize Pool", formatEth(duel.entryAmountEth * 2) + " total"],
                 ["Created", formatTimeAgo(duel.createdAt)],
                 ...(duel.startTime ? [["Started", formatTimeAgo(duel.startTime)]] : []),
-                ...(duel.endTime ? [["Ends", formatTimeAgo(duel.endTime)]] : []),
+                ...(endsDisplay ? [["Ends", endsDisplay]] : []),
               ].map(([label, value]) => (
                 <div key={label} className="flex items-center justify-between">
                   <span className="font-mono text-xs text-muted-foreground">{label}</span>

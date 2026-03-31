@@ -1,4 +1,5 @@
 import { ethers } from 'ethers';
+import { PythPriceService } from './pythPriceService';
 
 /**
  * OnChainDuelService
@@ -18,17 +19,23 @@ const FACTORY_ABI = [
 
 const DUEL_ABI = [
   "function joinDuel() payable",
-  "function joinDuel(string[] symbols, uint32[] weights) payable",
   "function submitPortfolio(address[] assets, bytes32[] priceIds, uint32[] weights)",
   "function activateDuel()",
+  "function lockStartPrices()",
   "function lockEndPricesAndSettle()",
   "function settle(int256[] creatorPrices, int256[] opponentPrices, int256[] creatorStartPrices, int256[] opponentStartPrices)",
   "function executePayout()",
   "function splitTie()",
   "function splitTieWinnings()",
   "function getDuelInfo() view returns (uint8 state, uint256 entryAmount, uint256 duration, uint256 startTime, uint256 endTime, address winner, bool settled, int256 creatorReturn, int256 opponentReturn)",
-  "function getCreatorPortfolio() view returns (address participant, string[] symbols, uint32[] weights, bool submitted)",
-  "function getOpponentPortfolio() view returns (address participant, string[] symbols, uint32[] weights, bool submitted)",
+  "function getCreatorPortfolio() view returns (address participant, address[] assets, bytes32[] priceIds, uint32[] weights, bool submitted, int256 returnVal)",
+  "function getOpponentPortfolio() view returns (address participant, address[] assets, bytes32[] priceIds, uint32[] weights, bool submitted, int256 returnVal)",
+  "function config() view returns (bytes32 duelId, uint256 entryAmount, uint256 duration, uint256 startTime, uint256 endTime, address assetRegistry, address pythConsumer)",
+];
+
+const ASSET_REGISTRY_ABI = [
+  "function getDuelAssets(bytes32 duelId) view returns (address[])",
+  "function getAssetInfo(bytes32 duelId, address asset) view returns (bytes32 priceId, uint8 tier, bool isActive, string symbol)",
 ];
 
 export class OnChainDuelService {
@@ -36,6 +43,7 @@ export class OnChainDuelService {
   private signer?: ethers.Signer;
   private factoryAddress: string;
   private factoryContract: ethers.Contract;
+  private priceIdToSymbol = new Map<string, string>();
 
   /** Permanent cache: duelId → createdAt timestamp (never changes) */
   private createdAtCache = new Map<string, number>();
@@ -69,6 +77,13 @@ export class OnChainDuelService {
     if (privateKey) {
       this.signer = new ethers.Wallet(privateKey, this.provider);
       this.factoryContract = this.factoryContract.connect(this.signer) as ethers.Contract;
+    }
+
+    for (const [symbol, priceId] of Object.entries(PythPriceService.PRICE_FEED_IDS)) {
+      const key = String(priceId || '').toLowerCase();
+      if (!key) continue;
+      if (symbol === 'POL' && this.priceIdToSymbol.has(key)) continue;
+      this.priceIdToSymbol.set(key, symbol);
     }
   }
 
@@ -266,6 +281,40 @@ export class OnChainDuelService {
       const creatorAddress = creatorPort && creatorPort[0] !== "0x0000000000000000000000000000000000000000" ? creatorPort[0] : "0x";
       const opponentAddress = opponentPort && opponentPort[0] !== "0x0000000000000000000000000000000000000000" ? opponentPort[0] : null;
 
+      // Fetch asset symbols from AssetRegistry
+      let assetUniverse: string[] = [];
+      try {
+        const configData = await this.withRetry(() => duelContract.config());
+        const duelId = configData[0]; // bytes32
+        const registryAddress = configData[5]; // assetRegistry address
+        if (registryAddress && registryAddress !== "0x0000000000000000000000000000000000000000") {
+          const registry = new ethers.Contract(registryAddress, ASSET_REGISTRY_ABI, this.provider);
+          const assetAddresses = await this.withRetry(() => registry.getDuelAssets(duelId));
+          const symbols = await Promise.all(
+            assetAddresses.map(async (addr: string) => {
+              try {
+                const assetInfo = await registry.getAssetInfo(duelId, addr);
+                return assetInfo[3] || ""; // symbol is index 3
+              } catch {
+                return "";
+              }
+            })
+          );
+          assetUniverse = symbols.filter((s: string) => s.length > 0);
+        }
+      } catch (e) {
+        // Fallback: no symbols available
+      }
+
+      if (assetUniverse.length === 0) {
+        const creatorPriceIds = Array.isArray(creatorPort?.[2]) ? creatorPort[2].map((id: any) => String(id)) : [];
+        const opponentPriceIds = Array.isArray(opponentPort?.[2]) ? opponentPort[2].map((id: any) => String(id)) : [];
+        assetUniverse = Array.from(new Set([
+          ...this.mapPriceIdsToSymbols(creatorPriceIds),
+          ...this.mapPriceIdsToSymbols(opponentPriceIds),
+        ]));
+      }
+
       return {
         state: this.mapState(stateCode, startTime, endTime, settled),
         stateCode,
@@ -280,7 +329,7 @@ export class OnChainDuelService {
         opponentReturn: info[8].toString(), // basis points
         creator: creatorAddress,
         opponent: opponentAddress,
-        assetUniverse: creatorPort ? creatorPort[1].map((s: any) => String(s)) : [],
+        assetUniverse,
       };
     } catch (error) {
       console.error("Error fetching duel info:", error);
@@ -297,14 +346,46 @@ export class OnChainDuelService {
     try {
       const duelContract = new ethers.Contract(duelAddress, DUEL_ABI, this.provider);
       const portfolio = await this.withRetry(() => duelContract.getCreatorPortfolio());
+      // portfolio: [participant, assets[], priceIds[], weights[], submitted, returnVal]
+      const priceIds = Array.isArray(portfolio[2]) ? portfolio[2].map((id: any) => String(id)) : [];
+      const weights = Array.isArray(portfolio[3]) ? portfolio[3].map((w: any) => Number(w)) : [];
+
+      // Fetch symbols from AssetRegistry
+      let symbols: string[] = [];
+      try {
+        const configData = await this.withRetry(() => duelContract.config());
+        const duelId = configData[0];
+        const registryAddress = configData[5];
+        if (registryAddress && registryAddress !== "0x0000000000000000000000000000000000000000") {
+          const registry = new ethers.Contract(registryAddress, ASSET_REGISTRY_ABI, this.provider);
+          const assetAddresses = portfolio[1] as string[];
+          symbols = await Promise.all(
+            assetAddresses.map(async (addr: string) => {
+              try {
+                const assetInfo = await registry.getAssetInfo(duelId, addr);
+                return assetInfo[3] || "";
+              } catch {
+                return "";
+              }
+            })
+          );
+        }
+      } catch { /* fallback: empty symbols */ }
+
+      let resolvedSymbols = symbols.filter((s: string) => s.length > 0);
+      if (resolvedSymbols.length === 0 && priceIds.length > 0) {
+        resolvedSymbols = this.mapPriceIdsToSymbols(priceIds);
+      }
+
+      const alignedLength = Math.min(resolvedSymbols.length, weights.length);
 
       const result = {
         participant: portfolio[0],
-        symbols: portfolio[1],
-        priceIds: [], // deprecated
-        weights: portfolio[2].map((w: any) => Number(w)),
-        submitted: portfolio[3],
-        return: "0",
+        symbols: alignedLength > 0 ? resolvedSymbols.slice(0, alignedLength) : resolvedSymbols,
+        priceIds: alignedLength > 0 ? priceIds.slice(0, alignedLength) : priceIds,
+        weights: alignedLength > 0 ? weights.slice(0, alignedLength) : weights,
+        submitted: portfolio[4],
+        return: portfolio[5]?.toString() || "0",
       };
       if (result.submitted) this.creatorPortfolioCache.set(duelAddress, result);
       return result;
@@ -323,14 +404,46 @@ export class OnChainDuelService {
     try {
       const duelContract = new ethers.Contract(duelAddress, DUEL_ABI, this.provider);
       const portfolio = await this.withRetry(() => duelContract.getOpponentPortfolio());
+      // portfolio: [participant, assets[], priceIds[], weights[], submitted, returnVal]
+      const priceIds = Array.isArray(portfolio[2]) ? portfolio[2].map((id: any) => String(id)) : [];
+      const weights = Array.isArray(portfolio[3]) ? portfolio[3].map((w: any) => Number(w)) : [];
+
+      // Fetch symbols from AssetRegistry
+      let symbols: string[] = [];
+      try {
+        const configData = await this.withRetry(() => duelContract.config());
+        const duelId = configData[0];
+        const registryAddress = configData[5];
+        if (registryAddress && registryAddress !== "0x0000000000000000000000000000000000000000") {
+          const registry = new ethers.Contract(registryAddress, ASSET_REGISTRY_ABI, this.provider);
+          const assetAddresses = portfolio[1] as string[];
+          symbols = await Promise.all(
+            assetAddresses.map(async (addr: string) => {
+              try {
+                const assetInfo = await registry.getAssetInfo(duelId, addr);
+                return assetInfo[3] || "";
+              } catch {
+                return "";
+              }
+            })
+          );
+        }
+      } catch { /* fallback: empty symbols */ }
+
+      let resolvedSymbols = symbols.filter((s: string) => s.length > 0);
+      if (resolvedSymbols.length === 0 && priceIds.length > 0) {
+        resolvedSymbols = this.mapPriceIdsToSymbols(priceIds);
+      }
+
+      const alignedLength = Math.min(resolvedSymbols.length, weights.length);
 
       const result = {
         participant: portfolio[0],
-        symbols: portfolio[1],
-        priceIds: [], // deprecated
-        weights: portfolio[2].map((w: any) => Number(w)),
-        submitted: portfolio[3],
-        return: "0",
+        symbols: alignedLength > 0 ? resolvedSymbols.slice(0, alignedLength) : resolvedSymbols,
+        priceIds: alignedLength > 0 ? priceIds.slice(0, alignedLength) : priceIds,
+        weights: alignedLength > 0 ? weights.slice(0, alignedLength) : weights,
+        submitted: portfolio[4],
+        return: portfolio[5]?.toString() || "0",
       };
       if (result.submitted) this.opponentPortfolioCache.set(duelAddress, result);
       return result;
@@ -360,6 +473,30 @@ export class OnChainDuelService {
       return { txHash: receipt.hash };
     } catch (error) {
       console.error("Error activating duel:", error);
+      throw error;
+    }
+  }
+
+  /**
+   * Lock start prices (must be called after activateDuel)
+   */
+  async lockStartPrices(duelAddress: string): Promise<{ txHash: string }> {
+    try {
+      if (!this.signer) {
+        throw new Error("Signer required for locking start prices");
+      }
+
+      const duelContract = new ethers.Contract(duelAddress, DUEL_ABI, this.signer);
+      const tx = await duelContract.lockStartPrices();
+      const receipt = await tx.wait();
+
+      if (!receipt) {
+        throw new Error("Transaction failed");
+      }
+
+      return { txHash: receipt.hash };
+    } catch (error) {
+      console.error("Error locking start prices:", error);
       throw error;
     }
   }
@@ -602,18 +739,18 @@ export class OnChainDuelService {
     return /missing revert data|function selector|not recognized|no data present/i.test(message);
   }
 
+  private mapPriceIdsToSymbols(priceIds: string[]): string[] {
+    return priceIds
+      .map((id) => this.priceIdToSymbol.get(String(id || '').toLowerCase()) || '')
+      .filter((symbol) => symbol.length > 0);
+  }
+
   private mapState(stateCode: number, startTime: number, endTime: number, settled: boolean): string {
     if (stateCode === 0) return "Created";
     if (stateCode === 1) return "Joined";
-    if (stateCode === 2) return endTime > 0 ? "Active" : "SubmittedBoth";
-    if (stateCode === 3) {
-      if (settled) return "Settled";
-      return endTime > 0 ? "Active" : "Settling";
-    }
-    if (stateCode === 4) {
-      if (settled) return "Settled";
-      return startTime > 0 || endTime > 0 ? "Cancelled" : "Settling";
-    }
+    if (stateCode === 2) return "SubmittedBoth"; // Both portfolios submitted, waiting for activateDuel()
+    if (stateCode === 3) return settled ? "Settled" : "Active";
+    if (stateCode === 4) return settled ? "Settled" : "Settling";
     if (stateCode === 5) return "Settled";
     if (stateCode === 6) return "Cancelled";
     return "Unknown";

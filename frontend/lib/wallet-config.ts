@@ -157,7 +157,7 @@ const recommendedWallets = hasValidWalletConnectProjectId
 
 function createWagmiConfig() {
   return getDefaultConfig({
-    appName: "ShieldVault",
+    appName: "FlowIn-Dex",
     projectId: walletConnectProjectId ?? "00000000000000000000000000000000",
     wallets: [
       {
@@ -188,10 +188,10 @@ function createWagmiConfig() {
 
 declare global {
   // eslint-disable-next-line no-var
-  var __shieldvaultWagmiConfig: ReturnType<typeof getDefaultConfig> | undefined
+  var __flowInDexWagmiConfig: ReturnType<typeof getDefaultConfig> | undefined
 }
 
-export const wagmiConfig = globalThis.__shieldvaultWagmiConfig ?? createWagmiConfig()
-if (!globalThis.__shieldvaultWagmiConfig) {
-  globalThis.__shieldvaultWagmiConfig = wagmiConfig
+export const wagmiConfig = globalThis.__flowInDexWagmiConfig ?? createWagmiConfig()
+if (!globalThis.__flowInDexWagmiConfig) {
+  globalThis.__flowInDexWagmiConfig = wagmiConfig
 }

@@ -13,8 +13,10 @@ import {
   isWeightValid,
   normalizeWeights,
   formatEth,
+  getExplorerUrl,
+  getExplorerName,
 } from "@/lib/duel-utils"
-import { ASSET_TIERS, buildContractAssetArrays, getTierWeightTotals } from "@/lib/pyth-config"
+import { ASSET_TIERS, buildContractAssetArrays, getAllSupportedAssetArrays, getTierWeightTotals } from "@/lib/pyth-config"
 import { FACTORY_ABI, DUEL_ABI } from "@/lib/contracts"
 import { CheckCircle2, Loader2, Lock, ArrowRight, ArrowLeft, Plus, Minus, X, Shuffle, Zap, Wallet } from "lucide-react"
 import { CHAIN_META } from "@/lib/chains-config"
@@ -179,6 +181,7 @@ export default function CreateDuelPage() {
   const [submitted, setSubmitted]       = useState(false)
   const [submitError, setSubmitError]   = useState<string | null>(null)
   const [createdDuelAddress, setCreatedDuelAddress] = useState<string | null>(null)
+  const [creationTxHash, setCreationTxHash] = useState<string | null>(null)
 
   // Drag state
   const dragRef = useRef<{ symbol: string; ox: number; oy: number; nx: number; ny: number } | null>(null)
@@ -206,6 +209,14 @@ export default function CreateDuelPage() {
   const entryAmount = Number.isFinite(parsedEntryAmount) ? parsedEntryAmount : 0
   const isEntryAmountValid = entryAmount >= MIN_ENTRY_AMOUNT
   const selected = symbols
+  const tier1SymbolsList = SUPPORTED_ASSETS
+    .filter((asset) => (ASSET_TIERS[asset.symbol] ?? 1) === 0)
+    .map((asset) => asset.symbol)
+    .join(", ")
+  const tier2SymbolsList = SUPPORTED_ASSETS
+    .filter((asset) => (ASSET_TIERS[asset.symbol] ?? 1) === 1)
+    .map((asset) => asset.symbol)
+    .join(", ")
 
   // ── add / remove ─────────────────────────────────────────────────────────
   const addNode = useCallback((symbol: string) => {
@@ -369,42 +380,67 @@ export default function CreateDuelPage() {
       // 1️⃣ Create the duel on-chain
       let receipt1: any
       let requiresPortfolioSubmit = false
+
+      // Build contract arrays with ALL supported assets as the universe
+      // This allows both participants to pick any supported asset when submitting portfolios
+      const { assets, priceIds, tiers, syms } = getAllSupportedAssetArrays()
+      const assetAddresses = assets as `0x${string}`[]
+      const assetPriceIds = priceIds as `0x${string}`[]
+
+      console.log("[CreateDuel] Params:", {
+        factoryAddress,
+        entryWei: entryWei.toString(),
+        duration,
+        assetAddresses,
+        assetPriceIds,
+        tiers,
+        syms,
+      })
+
       try {
-        // ShieldVaultFactory signature (active Flow EVM test deployment).
+        // DuelFactoryOnChain signature (current Flow EVM deployment)
+        console.log("[CreateDuel] Attempting DuelFactoryOnChain signature...")
         const hash1 = await writeContractAsync({
-          chainId: FLOW_EVM_TESTNET_CHAIN_ID,
-          address: factoryAddress,
-          abi: FACTORY_ABI,
-          functionName: "createDuel",
-          args: [entryWei, BigInt(duration), submitSymbols, submitWeights] as any,
-          value: entryWei,
-        })
-
-        receipt1 = await publicClient.waitForTransactionReceipt({ hash: hash1, confirmations: 1 })
-        if (receipt1.status !== "success") throw new Error("Duel creation transaction reverted")
-      } catch (createErr: any) {
-        const createMessage = createErr?.shortMessage || createErr?.message || ""
-        if (!isSelectorMismatch(createMessage)) {
-          throw createErr
-        }
-
-        // Fallback for DuelFactory/DuelFactoryOnChain signature.
-        const { assets, priceIds, tiers, syms } = buildContractAssetArrays(submitSymbols)
-        const assetAddresses = assets as `0x${string}`[]
-        const assetPriceIds = priceIds as `0x${string}`[]
-
-        const fallbackHash = await writeContractAsync({
           chainId: FLOW_EVM_TESTNET_CHAIN_ID,
           address: factoryAddress,
           abi: FACTORY_ABI,
           functionName: "createDuel",
           args: [entryWei, BigInt(duration), assetAddresses, assetPriceIds, tiers, syms] as any,
           value: entryWei,
+          gas: 8_000_000n,
         })
 
-        receipt1 = await publicClient.waitForTransactionReceipt({ hash: fallbackHash, confirmations: 1 })
+        console.log("[CreateDuel] Tx hash:", hash1)
+        setCreationTxHash(hash1)
+        receipt1 = await publicClient.waitForTransactionReceipt({ hash: hash1, confirmations: 1 })
+        console.log("[CreateDuel] Receipt:", receipt1.status)
         if (receipt1.status !== "success") throw new Error("Duel creation transaction reverted")
         requiresPortfolioSubmit = true
+      } catch (createErr: any) {
+        const createMessage = createErr?.shortMessage || createErr?.message || ""
+        console.error("[CreateDuel] Primary signature failed:", createMessage, createErr)
+        if (!isSelectorMismatch(createMessage)) {
+          throw createErr
+        }
+
+        // Fallback for older FlowIn-Dex factory signature (symbols, weights)
+        console.log("[CreateDuel] Trying fallback FlowIn-Dex factory signature...")
+        const fallbackHash = await writeContractAsync({
+          chainId: FLOW_EVM_TESTNET_CHAIN_ID,
+          address: factoryAddress,
+          abi: FACTORY_ABI,
+          functionName: "createDuel",
+          args: [entryWei, BigInt(duration), submitSymbols, submitWeights] as any,
+          value: entryWei,
+          gas: 8_000_000n,
+        })
+
+        console.log("[CreateDuel] Fallback tx hash:", fallbackHash)
+        setCreationTxHash(fallbackHash)
+        receipt1 = await publicClient.waitForTransactionReceipt({ hash: fallbackHash, confirmations: 1 })
+        console.log("[CreateDuel] Fallback receipt:", receipt1.status)
+        if (receipt1.status !== "success") throw new Error("Duel creation transaction reverted")
+        requiresPortfolioSubmit = false
       }
 
       // Parse logs to find DuelCreated event
@@ -430,38 +466,32 @@ export default function CreateDuelPage() {
       if (!newDuelAddress) throw new Error("Failed to parse duel address from transaction logs")
       setCreatedDuelAddress(newDuelAddress)
 
-      // 2️⃣ Submit creator's portfolio
-      if (requiresPortfolioSubmit) {
-        const { assets, priceIds } = buildContractAssetArrays(submitSymbols)
-        const assetAddresses = assets as `0x${string}`[]
-        const assetPriceIds = priceIds as `0x${string}`[]
-
-        try {
-          const hash2 = await writeContractAsync({
-            chainId: FLOW_EVM_TESTNET_CHAIN_ID,
-            address: newDuelAddress as `0x${string}`,
-            abi: DUEL_ABI,
-            functionName: "submitPortfolio",
-            args: [assetAddresses, assetPriceIds, submitWeights],
-          })
-
-          const receipt2 = await publicClient.waitForTransactionReceipt({ hash: hash2, confirmations: 1 })
-          if (receipt2.status !== "success") throw new Error("Portfolio submission transaction reverted")
-        } catch (submitErr: any) {
-          const submitMessage = submitErr?.shortMessage || submitErr?.message || ""
-          if (!isSelectorMismatch(submitMessage)) {
-            throw submitErr
-          }
-          // ShieldVaultDuel stores creator portfolio at creation and does not expose submitPortfolio.
+      // Note: Creator's portfolio is submitted later after opponent joins.
+      // The DuelOnChain contract requires state=Joined before submitPortfolio can be called.
+      // The creator will submit their portfolio via the duel detail page once an opponent joins.
+      // Store the portfolio selection in localStorage for later submission.
+      if (requiresPortfolioSubmit && newDuelAddress) {
+        const portfolioData = {
+          symbols: submitSymbols,
+          weights: submitWeights.map(w => Number(w)),
+          savedAt: Date.now(),
         }
+        localStorage.setItem(`pending-portfolio-${newDuelAddress.toLowerCase()}`, JSON.stringify(portfolioData))
+        console.log("[CreateDuel] Saved pending portfolio for later submission", portfolioData)
       }
 
       setIsSubmitting(false)
       setSubmitted(true)
       setTimeout(() => router.push("/my-duels?tab=pending"), 1800)
     } catch (err: any) {
-      console.error(err)
-      const message = err?.shortMessage || err?.message || "Transaction failed. Please try again."
+      console.error("[CreateDuel] Final error:", err)
+      // Extract revert reason if available
+      let message = err?.shortMessage || err?.message || "Transaction failed. Please try again."
+      if (err?.cause?.reason) {
+        message = `Contract error: ${err.cause.reason}`
+      } else if (err?.data?.message) {
+        message = err.data.message
+      }
 
       if (/flow-mainnet/i.test(message) && /invalid for chain/i.test(message)) {
         setSubmitError(
@@ -603,12 +633,27 @@ export default function CreateDuelPage() {
         {step === 2 && (
           <div className="space-y-4">
 
+            <div className="rounded-xl border border-border bg-card/60 px-4 py-3">
+              <p className="font-mono text-[11px] text-muted-foreground leading-relaxed">
+                Tier 1 coins are high-volatility assets. Add at least one coin from each tier to satisfy on-chain rules.
+              </p>
+              <p className="mt-2 font-mono text-[11px] leading-relaxed">
+                <span className="text-amber-300">Tier 1 (High Vol): </span>
+                <span className="text-foreground/90">{tier1SymbolsList}</span>
+              </p>
+              <p className="mt-1 font-mono text-[11px] leading-relaxed">
+                <span className="text-sky-300">Tier 2 (Other Assets): </span>
+                <span className="text-foreground/90">{tier2SymbolsList}</span>
+              </p>
+            </div>
+
             {/* ── Coin palette ─────────────────────────────────────────── */}
             <div className="flex flex-wrap items-center gap-2 px-1">
               <span className="font-mono text-[11px] text-muted-foreground mr-1 shrink-0">Add coin:</span>
               {SUPPORTED_ASSETS.map(asset => {
                 const added = selected.includes(asset.symbol)
                 const full  = nodes.length >= 5 && !added
+                const isTier1Asset = (ASSET_TIERS[asset.symbol] ?? 1) === 0
                 return (
                   <button
                     key={asset.symbol}
@@ -622,6 +667,15 @@ export default function CreateDuelPage() {
                   >
                     <span style={{ color: ASSET_COLORS[asset.symbol] }}>{asset.icon}</span>
                     {asset.symbol}
+                    <span
+                      className={`rounded-full border px-1.5 py-0.5 font-mono text-[9px] leading-none ${
+                        isTier1Asset
+                          ? "border-amber-400/40 text-amber-300"
+                          : "border-sky-400/40 text-sky-300"
+                      }`}
+                    >
+                      {isTier1Asset ? "T1" : "T2"}
+                    </span>
                     {added ? <CheckCircle2 className="h-3 w-3 text-primary" /> : <Plus className="h-3 w-3" />}
                   </button>
                 )
@@ -926,6 +980,19 @@ export default function CreateDuelPage() {
                 <p className="font-mono text-sm text-muted-foreground">Your encrypted strategy is on-chain. Redirecting…</p>
                 {createdDuelAddress && (
                   <p className="font-mono text-xs text-primary/80">{truncateAddress(createdDuelAddress)}</p>
+                )}
+                {creationTxHash && (
+                  <a
+                    href={getExplorerUrl(FLOW_EVM_TESTNET_CHAIN_ID, creationTxHash)}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="rounded-full border border-primary/50 bg-primary/20 text-primary px-5 py-2.5 font-mono text-xs font-semibold hover:bg-primary/30 transition-colors flex items-center gap-2 mt-2"
+                  >
+                    View on {getExplorerName(FLOW_EVM_TESTNET_CHAIN_ID)}
+                    <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
+                    </svg>
+                  </a>
                 )}
               </div>
             ) : (

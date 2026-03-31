@@ -20,6 +20,8 @@ import {
   isWeightValid,
   normalizeWeights,
   truncateAddress,
+  getExplorerUrl,
+  getExplorerName,
 } from "@/lib/duel-utils"
 import { ASSET_TIERS, buildContractAssetArrays, getTierWeightTotals } from "@/lib/pyth-config"
 import { DUEL_ABI } from "@/lib/contracts"
@@ -101,6 +103,31 @@ function createNodesFromSymbols(symbols: string[]): FlowNode[] {
   }))
 }
 
+function getPendingPortfolioSnapshot(duelAddress: string): { symbols: string[]; savedAtSec: number | null } {
+  if (typeof window === "undefined") return { symbols: [], savedAtSec: null }
+
+  try {
+    const raw = localStorage.getItem(`pending-portfolio-${duelAddress.toLowerCase()}`)
+    if (!raw) return { symbols: [], savedAtSec: null }
+
+    const parsed = JSON.parse(raw)
+    const symbols = Array.isArray(parsed?.symbols)
+      ? parsed.symbols
+      .map((s: unknown) => String(s || "").trim().toUpperCase())
+      .filter((s: string) => s.length > 0)
+      : []
+
+    const savedAtSecRaw = Number(parsed?.savedAt)
+    const savedAtSec = Number.isFinite(savedAtSecRaw) && savedAtSecRaw > 0
+      ? Math.floor(savedAtSecRaw / 1000)
+      : null
+
+    return { symbols, savedAtSec }
+  } catch {
+    return { symbols: [], savedAtSec: null }
+  }
+}
+
 function rebalanceToTierSplit(allocations: WeightAllocation[]): WeightAllocation[] | null {
   const tier1 = allocations.filter((a) => (ASSET_TIERS[a.symbol] ?? 1) === 0)
   const tier2 = allocations.filter((a) => (ASSET_TIERS[a.symbol] ?? 1) === 1)
@@ -176,6 +203,7 @@ export default function JoinDuelPage() {
   const [joined, setJoined] = useState(false)
   const [joinStep, setJoinStep] = useState(1)
   const [joinError, setJoinError] = useState<string | null>(null)
+  const [joinTxHash, setJoinTxHash] = useState<string | null>(null)
 
   const dragRef = useRef<{ symbol: string; ox: number; oy: number; nx: number; ny: number } | null>(null)
   const canvasRef = useRef<HTMLDivElement>(null)
@@ -208,10 +236,25 @@ export default function JoinDuelPage() {
   const openDuels: Duel[] = (data?.duels || [])
     .filter((d) => d.stateCode === 0)
     .map((d) => {
+      const supportedSymbols = new Set(SUPPORTED_ASSETS.map((a) => a.symbol))
+      const isViewerCreator = Boolean(
+        address && d.creator && String(d.creator).toLowerCase() === address.toLowerCase()
+      )
+      const pendingSnapshot = isViewerCreator
+        ? getPendingPortfolioSnapshot(d.duelAddress)
+        : { symbols: [], savedAtSec: null as number | null }
+      const apiUniverse = Array.isArray(d.assetUniverse)
+        ? d.assetUniverse.map((s) => String(s || "").trim().toUpperCase()).filter((s) => supportedSymbols.has(s))
+        : []
+      const pendingUniverse = pendingSnapshot.symbols.filter((s) => supportedSymbols.has(s))
+      const displayUniverse = apiUniverse.length > 0 ? apiUniverse : pendingUniverse
+
       const createdAtSeconds =
-        typeof d.createdAt === "number"
+        typeof d.createdAt === "number" && d.createdAt > 0
           ? d.createdAt
-          : typeof d.startTime === "number"
+          : pendingSnapshot.savedAtSec && pendingSnapshot.savedAtSec > 0
+            ? pendingSnapshot.savedAtSec
+          : typeof d.startTime === "number" && d.startTime > 0
             ? d.startTime
             : Math.floor(Date.now() / 1000)
 
@@ -221,7 +264,7 @@ export default function JoinDuelPage() {
         duelAddress: d.duelAddress,
         status: DuelStatus.OPEN,
         creator: { address: d.creator || "0x", hasSubmitted: true },
-        assetUniverse: d.assetUniverse?.length ? d.assetUniverse : ["BTC", "ETH", "SOL"],
+        assetUniverse: displayUniverse,
         entryAmountEth: parseFloat(d.entryAmountFormatted),
         durationSeconds: d.duration,
         createdAt: new Date(createdAtSeconds * 1000),
@@ -234,6 +277,18 @@ export default function JoinDuelPage() {
       duelCount: data.duels.length,
     })
   }, [data])
+
+  useEffect(() => {
+    if (typeof window === "undefined" || !address || !data?.duels) return
+
+    for (const duel of data.duels) {
+      const isCreator = String(duel.creator || "").toLowerCase() === address.toLowerCase()
+      // Keep pending data while waiting for creator submission in Joined state.
+      if (isCreator && Number(duel.stateCode) >= 2) {
+        localStorage.removeItem(`pending-portfolio-${String(duel.duelAddress || "").toLowerCase()}`)
+      }
+    }
+  }, [data?.duels, address])
 
   useEffect(() => {
     if (!error) return
@@ -275,11 +330,9 @@ export default function JoinDuelPage() {
     if (!duel) return
 
     const supportedSymbols = new Set(SUPPORTED_ASSETS.map((a) => a.symbol))
-    const suggestedSymbols = duel.assetUniverse.filter((symbol) => supportedSymbols.has(symbol)).slice(0, MAX_INDEX_ASSETS)
-    const initialSymbols =
-      suggestedSymbols.length >= MIN_INDEX_ASSETS
-        ? suggestedSymbols
-        : SUPPORTED_ASSETS.slice(0, 3).map((a) => a.symbol)
+    // Only use assets from the duel's registered universe
+    const universeSymbols = duel.assetUniverse.filter((symbol) => supportedSymbols.has(symbol))
+    const initialSymbols = universeSymbols.slice(0, MAX_INDEX_ASSETS)
 
     setSelectedDuel(duel)
     setNodes(createNodesFromSymbols(initialSymbols))
@@ -505,53 +558,59 @@ export default function JoinDuelPage() {
       let requiresSubmitPortfolio = false
 
       try {
-        console.log("[JoinDuel] Attempting joinDuel(symbols, weights)")
+        // DuelOnChain uses joinDuel() with no args — try this first
+        console.log("[JoinDuel] Attempting joinDuel() (no args)")
         const hash1 = await writeContractAsync({
           chainId: FLOW_EVM_TESTNET_CHAIN_ID,
           address: duelAddress,
           abi: DUEL_ABI,
           functionName: "joinDuel",
-          args: [submitSymbols, submitWeights] as any,
           value: entryWei,
+          gas: 300_000n,
         })
 
-        console.log("[JoinDuel] joinDuel(symbols,weights) tx sent", { hash: hash1 })
+        console.log("[JoinDuel] joinDuel() tx sent", { hash: hash1 })
+        setJoinTxHash(hash1)
 
         const receipt1 = await publicClient.waitForTransactionReceipt({ hash: hash1, confirmations: 1 })
-        console.log("[JoinDuel] joinDuel(symbols,weights) receipt", {
+        console.log("[JoinDuel] joinDuel() receipt", {
           status: receipt1.status,
           blockNumber: receipt1.blockNumber?.toString(),
         })
         if (receipt1.status !== "success") throw new Error("Join transaction reverted")
+        requiresSubmitPortfolio = true
       } catch (joinErr: any) {
         const joinMessage = joinErr?.shortMessage || joinErr?.message || ""
-        console.warn("[JoinDuel] joinDuel(symbols,weights) primary signature failed", {
+        console.warn("[JoinDuel] joinDuel() failed, trying joinDuel(symbols, weights)", {
           joinMessage,
-          joinErr,
         })
 
         if (!isSelectorMismatch(joinMessage)) {
           throw joinErr
         }
 
-        console.log("[JoinDuel] Retrying with legacy joinDuel()")
+        // Fallback for older FlowIn-Dex contracts that use joinDuel(symbols, weights)
+        console.log("[JoinDuel] Retrying with joinDuel(symbols, weights)")
         const fallbackHash = await writeContractAsync({
           chainId: FLOW_EVM_TESTNET_CHAIN_ID,
           address: duelAddress,
           abi: DUEL_ABI,
           functionName: "joinDuel",
+          args: [submitSymbols, submitWeights] as any,
           value: entryWei,
+          gas: 500_000n,
         })
 
-        console.log("[JoinDuel] joinDuel() tx sent", { hash: fallbackHash })
+        console.log("[JoinDuel] joinDuel(symbols,weights) tx sent", { hash: fallbackHash })
+        setJoinTxHash(fallbackHash)
 
         const fallbackReceipt = await publicClient.waitForTransactionReceipt({ hash: fallbackHash, confirmations: 1 })
-        console.log("[JoinDuel] joinDuel() receipt", {
+        console.log("[JoinDuel] joinDuel(symbols,weights) receipt", {
           status: fallbackReceipt.status,
           blockNumber: fallbackReceipt.blockNumber?.toString(),
         })
         if (fallbackReceipt.status !== "success") throw new Error("Join transaction reverted")
-        requiresSubmitPortfolio = true
+        requiresSubmitPortfolio = false // This variant already includes portfolio
       }
 
       if (requiresSubmitPortfolio) {
@@ -562,6 +621,7 @@ export default function JoinDuelPage() {
           abi: DUEL_ABI,
           functionName: "submitPortfolio",
           args: [assets, priceIds, submitWeights],
+          gas: 500_000n,
         })
 
         console.log("[JoinDuel] submitPortfolio tx sent", { hash: hash2 })
@@ -574,9 +634,42 @@ export default function JoinDuelPage() {
         if (receipt2.status !== "success") throw new Error("Portfolio submission reverted")
       }
 
+      let activated = false
+      try {
+        console.log("[JoinDuel] Attempting activateDuel()")
+        const activateHash = await writeContractAsync({
+          chainId: FLOW_EVM_TESTNET_CHAIN_ID,
+          address: duelAddress,
+          abi: DUEL_ABI,
+          functionName: "activateDuel",
+          gas: 300_000n,
+        })
+
+        console.log("[JoinDuel] activateDuel tx sent", { hash: activateHash })
+        setJoinTxHash(activateHash)
+
+        const activateReceipt = await publicClient.waitForTransactionReceipt({
+          hash: activateHash,
+          confirmations: 1,
+        })
+
+        console.log("[JoinDuel] activateDuel receipt", {
+          status: activateReceipt.status,
+          blockNumber: activateReceipt.blockNumber?.toString(),
+        })
+
+        if (activateReceipt.status === "success") {
+          activated = true
+        }
+      } catch (activateErr: any) {
+        const activateMessage = activateErr?.shortMessage || activateErr?.message || ""
+        console.warn("[JoinDuel] activateDuel skipped", { activateMessage })
+      }
+
       console.log("[JoinDuel] Join flow completed successfully", {
         duelId: selectedDuel.id,
         requiresSubmitPortfolio,
+        activated,
       })
 
       if (debugGroupOpened) {
@@ -632,8 +725,21 @@ export default function JoinDuelPage() {
                 <CheckCircle2 className="h-12 w-12 text-primary" />
                 <h2 className="font-mono font-bold text-foreground text-lg">You&apos;ve Joined!</h2>
                 <p className="font-mono text-sm text-muted-foreground">
-                  Your portfolio has been posted and the duel is now active. Redirecting to the live duel...
+                  Join completed. Redirecting to duel details to verify start status and live progress...
                 </p>
+                {joinTxHash && (
+                  <a
+                    href={getExplorerUrl(FLOW_EVM_TESTNET_CHAIN_ID, joinTxHash)}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="rounded-full border border-primary/50 bg-primary/20 text-primary px-5 py-2.5 font-mono text-xs font-semibold hover:bg-primary/30 transition-colors flex items-center gap-2"
+                  >
+                    View on {getExplorerName(FLOW_EVM_TESTNET_CHAIN_ID)}
+                    <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
+                    </svg>
+                  </a>
+                )}
                 <button onClick={() => setSelectedDuel(null)} className="font-mono text-xs text-primary hover:underline mt-2">
                   &larr; Back to browsing
                 </button>

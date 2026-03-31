@@ -20,7 +20,7 @@ export default function SplineScene() {
   }
 
   return (
-    <div className="absolute inset-0 w-full h-full bg-background">
+    <div className="flow-spline-scene absolute inset-0 w-full h-full bg-background overflow-hidden">
       {/* Loading state */}
       {isLoading && (
         <div className="absolute inset-0 w-full h-full flex items-center justify-center">
@@ -56,6 +56,11 @@ export default function SplineScene() {
           />
         </Suspense>
       )}
+
+      <div className="pointer-events-none absolute bottom-4 right-4 z-30 flex items-center gap-2 rounded-full border border-border/80 bg-background/75 px-3 py-1.5 backdrop-blur-md">
+        <img src="/flow_logo.jpg" alt="Flow logo" className="h-5 w-5 rounded-full object-cover" />
+        <span className="font-mono text-[10px] uppercase tracking-[0.18em] text-foreground/85">Built with Flow</span>
+      </div>
     </div>
   )
 }

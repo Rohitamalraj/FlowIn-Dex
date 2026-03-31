@@ -1,0 +1,103 @@
+import { ethers } from "hardhat";
+
+async function main() {
+  const factoryAddress = "0x0991bfA42b3847675737E7478C020A98fe83198C";
+  const factory = await ethers.getContractAt("DuelFactoryOnChain", factoryAddress);
+
+  // Test with ALL supported assets (mirrors new frontend behavior)
+  const assets = [
+    "0x0000000000000000000000000000000000000001", // BTC
+    "0x0000000000000000000000000000000000000002", // ETH
+    "0x0000000000000000000000000000000000000003", // SOL
+    "0x0000000000000000000000000000000000000004", // BNB
+    "0x0000000000000000000000000000000000000005", // STRK
+    "0x0000000000000000000000000000000000000006", // ARB
+    "0x0000000000000000000000000000000000000007", // OP
+    "0x0000000000000000000000000000000000000008", // MATIC
+    "0x0000000000000000000000000000000000000009", // LINK
+    "0x000000000000000000000000000000000000000a", // AVAX
+    "0x000000000000000000000000000000000000000b", // USDC
+    "0x000000000000000000000000000000000000000c", // USDT
+    "0x000000000000000000000000000000000000000d", // DAI
+    "0x000000000000000000000000000000000000000e", // DOGE
+    "0x000000000000000000000000000000000000000f", // XRP
+    "0x0000000000000000000000000000000000000010", // ADA
+    "0x0000000000000000000000000000000000000011", // LTC
+    "0x0000000000000000000000000000000000000012", // DOT
+    "0x0000000000000000000000000000000000000013", // ATOM
+    "0x0000000000000000000000000000000000000014", // NEAR
+    "0x0000000000000000000000000000000000000015", // APT
+    "0x0000000000000000000000000000000000000016", // SUI
+    "0x0000000000000000000000000000000000000017", // UNI
+    "0x0000000000000000000000000000000000000018", // AAVE
+    "0x0000000000000000000000000000000000000019", // PEPE
+    "0x000000000000000000000000000000000000001a", // SHIB
+    "0x000000000000000000000000000000000000001b", // WIF
+    "0x000000000000000000000000000000000000001c", // TIA
+  ];
+  const priceIds = [
+    "0xe62df6c8b4a85fe1a67db44dc12de5db330f7ac66b72dc658afedf0f4a415b43", // BTC
+    "0xff61491a931112ddf1bd8147cd1b641375f79f5825126d665480874634fd0ace", // ETH
+    "0xef0d8b6fda2ceba41da15d4095d1da392a0d2f8ed0c6c7bc0f4cfac8c280b56d", // SOL
+    "0x2f95862b045670cd22bee3114c39763a4a08beeb663b145d283c31d7d1101c4f", // BNB
+    "0x6a182399ff70ccf3e06024898942028204125a819e519a335ffa4579e66cd870", // STRK
+    "0x3fa4252848f9f0a1480be62745a4629d9eb1322aebab8a791e344b3b9c1adcf5", // ARB
+    "0x385f64d993f7b77d8182ed5003d97c60aa3361f3cecfe711544d2d59165e9bdf", // OP
+    "0xffd11c5a1cfd42f80afb2df4d9f264c15f956d68153335374ec10722edd70472", // MATIC
+    "0x8ac0c70fff57e9aefdf5edf44b51d62c2d433653cbb2cf5cc06bb115af04d221", // LINK
+    "0x93da3352f9f1d105fdfe4971cfa80e9dd777bfc5d0f683ebb6e1294b92137bb7", // AVAX
+    "0xeaa020c61cc479712813461ce153894a96a6c00b21ed0cfc2798d1f9a9e9c94a", // USDC
+    "0x2b89b9dc8fdf9f34709a5b106b472f0f39bb6ca9ce04b0fd7f2e971688e2e53b", // USDT
+    "0xb0948a5e5313200c632b51bb5ca32f6de0d36e9950a942d19751e833f70dabfd", // DAI
+    "0xdcef50dd0a4cd2dcc17e45df1676dcb336a11a61c69df7a0299b0150c672d25c", // DOGE
+    "0xec5d399846a9209f3fe5881d70aae9268c94339ff9817e8d18ff19fa05eea1c8", // XRP
+    "0x2a01deaec9e51a579277b34b122399984d0bbf57e2458a7e42fecd2829867a0d", // ADA
+    "0x6e3f3fa8253588df9326580180233eb791e03b443a3ba7a1d892e73874e19a54", // LTC
+    "0xca3eed9b267293f6595901c734c7525ce8ef49adafe8284606ceb307afa2ca5b", // DOT
+    "0xb00b60f88b03a6a625a8d1c048c3f66653edf217439983d037e7222c4e612819", // ATOM
+    "0xc415de8d2eba7db216527dff4b60e8f3a5311c740dadb233e13e12547e226750", // NEAR
+    "0x03ae4db29ed4ae33d323568895aa00337e658e348b37509f5372ae51f0af00d5", // APT
+    "0x23d7315113f5b1d3ba7a83604c44b94d79f4fd69af77f804fc7f920a6dc65744", // SUI
+    "0x78d185a741d07edb3412b09008b7c5cfb9bbbd7d568bf00ba737b456ba171501", // UNI
+    "0x2b9ab1e972a281585084148ba1389800799bd4be63b957507db1349314e47445", // AAVE
+    "0xd69731a2e74ac1ce884fc3890f7ee324b6deb66147055249568869ed700882e4", // PEPE
+    "0xf0d57deca57b3da2fe63a493f4c25925fdfd8edf834b20f93e1f84dbd1504d4a", // SHIB
+    "0x4ca4beeca86f0d164160323817a4e42b10010a724c2217c6ee41b54cd4cc61fc", // WIF
+    "0x09f7c1d7dfbb7df2b8fe3d3d87ee94a2259d212da4f30c1f0540d066dfa44723", // TIA
+  ];
+  // Tiers: 0=TIER_1(blue-chip), 1=TIER_2(altcoin)
+  const tiers = [0,0,0,0,1,1,1,1,0,0,1,1,1,0,0,0,0,0,0,0,0,1,1,1,1,1,1,1];
+  const symbols = ["BTC","ETH","SOL","BNB","STRK","ARB","OP","MATIC","LINK","AVAX","USDC","USDT","DAI","DOGE","XRP","ADA","LTC","DOT","ATOM","NEAR","APT","SUI","UNI","AAVE","PEPE","SHIB","WIF","TIA"];
+
+  const entryAmount = ethers.parseEther("0.001");
+
+  console.log("Testing createDuel...");
+  console.log("Factory:", factoryAddress);
+  console.log("Assets:", assets);
+  console.log("PriceIds:", priceIds);
+  console.log("Tiers:", tiers);
+  console.log("Symbols:", symbols);
+  console.log("Entry:", entryAmount.toString());
+
+  try {
+    const tx = await factory.createDuel(
+      entryAmount,
+      120, // 2 min duration
+      assets,
+      priceIds,
+      tiers,
+      symbols,
+      { value: entryAmount, gasLimit: 8000000 }
+    );
+    console.log("TX Hash:", tx.hash);
+    const receipt = await tx.wait();
+    console.log("Status:", receipt?.status === 1 ? "SUCCESS" : "FAILED");
+  } catch (e: any) {
+    console.error("Error:", e.message);
+    if (e.data) {
+      console.error("Revert data:", e.data);
+    }
+  }
+}
+
+main().catch(console.error);
