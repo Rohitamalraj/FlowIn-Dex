@@ -6,12 +6,9 @@
  * Flow Wallet has been explicitly removed to prevent cross-VM proxy conflicts.
  */
 
-import { getDefaultConfig } from "@rainbow-me/rainbowkit"
-import {
-  metaMaskWallet,
-  rainbowWallet,
-  walletConnectWallet,
-} from "@rainbow-me/rainbowkit/wallets"
+import { getDefaultWallets } from "@rainbow-me/rainbowkit"
+import { configureChains, createConfig } from "wagmi"
+import { publicProvider } from "wagmi/providers/public"
 import { defineChain } from "viem"
 import {
   mainnet, sepolia,
@@ -23,7 +20,7 @@ import {
   bsc, bscTestnet,
   blast, blastSepolia,
   scroll, scrollSepolia,
-  zksync, zkSyncSepoliaTestnet,
+  zkSync, zkSyncSepoliaTestnet,
   linea, lineaSepolia,
   mantle,
 } from "viem/chains"
@@ -145,53 +142,44 @@ const taikoMainnet = defineChain({
   },
 })
 
+const { chains, publicClient, webSocketPublicClient } = configureChains(
+  [
+    flowEvmTestnet, flowEvmMainnet,
+    mainnet, sepolia,
+    arbitrum, arbitrumSepolia,
+    optimism, optimismSepolia,
+    base, baseSepolia,
+    polygon, polygonAmoy,
+    avalanche, avalancheFuji,
+    bsc, bscTestnet,
+    blast, blastSepolia,
+    scroll, scrollSepolia,
+    zkSync, zkSyncSepoliaTestnet,
+    linea, lineaSepolia,
+    mantle,
+    berachainMainnet, sonicMainnet, unichainMainnet,
+    seiEvm, modeNetwork, taikoMainnet,
+  ],
+  [publicProvider()]
+)
+
 const rawWalletConnectProjectId = process.env.NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID?.trim()
 const hasValidWalletConnectProjectId = Boolean(rawWalletConnectProjectId && /^[a-fA-F0-9]{32}$/.test(rawWalletConnectProjectId))
 const walletConnectProjectId = hasValidWalletConnectProjectId
-  ? rawWalletConnectProjectId
+  ? rawWalletConnectProjectId!
   : "00000000000000000000000000000000"
 
-const recommendedWallets = hasValidWalletConnectProjectId
-  ? [metaMaskWallet, rainbowWallet, walletConnectWallet]
-  : [metaMaskWallet]
+const { connectors } = getDefaultWallets({
+  appName: "FlowIn-Dex",
+  projectId: walletConnectProjectId,
+  chains,
+})
 
-function createWagmiConfig() {
-  return getDefaultConfig({
-    appName: "FlowIn-Dex",
-    projectId: walletConnectProjectId ?? "00000000000000000000000000000000",
-    wallets: [
-      {
-        groupName: "Recommended",
-        wallets: recommendedWallets,
-      },
-    ],
-    chains: [
-      flowEvmTestnet, flowEvmMainnet,
-      mainnet, sepolia,
-      arbitrum, arbitrumSepolia,
-      optimism, optimismSepolia,
-      base, baseSepolia,
-      polygon, polygonAmoy,
-      avalanche, avalancheFuji,
-      bsc, bscTestnet,
-      blast, blastSepolia,
-      scroll, scrollSepolia,
-      zksync, zkSyncSepoliaTestnet,
-      linea, lineaSepolia,
-      mantle,
-      berachainMainnet, sonicMainnet, unichainMainnet,
-      seiEvm, modeNetwork, taikoMainnet,
-    ] as any,
-    ssr: true,
-  })
-}
+export const wagmiConfig = createConfig({
+  autoConnect: true,
+  connectors,
+  publicClient,
+  webSocketPublicClient,
+})
 
-declare global {
-  // eslint-disable-next-line no-var
-  var __flowInDexWagmiConfig: ReturnType<typeof getDefaultConfig> | undefined
-}
-
-export const wagmiConfig = globalThis.__flowInDexWagmiConfig ?? createWagmiConfig()
-if (!globalThis.__flowInDexWagmiConfig) {
-  globalThis.__flowInDexWagmiConfig = wagmiConfig
-}
+export { chains }
