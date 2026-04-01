@@ -8,6 +8,10 @@
     "lint": "next lint",
     "start": "next start"
   },
+  "overrides": {
+    "@wagmi/core": "0.10.17",
+    "@wagmi/connectors": "0.3.28"
+  },
   "dependencies": {
     "@base-org/account": "^2.5.3",
     "@hookform/resolvers": "^3.10.0",
