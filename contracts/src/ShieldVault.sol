@@ -2,11 +2,21 @@
 pragma solidity ^0.8.24;
 
 /**
- * @title ShieldVaultFactory
- * @notice Pure-Solidity duel factory for Flow EVM Testnet.
- *         No Pyth oracle, no fhEVM, no Cadence cross-VM bridge.
- *         Prices for settlement are supplied by the caller (fetched
- *         off-chain from Pyth Hermes API).
+ * @title ShieldVaultFactory (DEPRECATED - NOT IN USE)
+ * @notice This is an older, simpler version of the duel system.
+ * @dev DO NOT USE - This contract is kept for reference only.
+ * 
+ * Current System Uses:
+ * - DuelFactoryOnChain.sol (factory)
+ * - DuelOnChain.sol (duel logic)
+ * - PythConsumer.sol (oracle integration)
+ * - AssetRegistry.sol (tier management)
+ * 
+ * Limitations of this contract:
+ * - No Pyth oracle integration (manual price input)
+ * - No tier system (no 50/50 requirement)
+ * - Trust-based settlement (caller provides prices)
+ * - Less secure than current implementation
  */
 contract ShieldVaultDuel {
     uint32 public constant WEIGHT_PRECISION = 10000; // basis points

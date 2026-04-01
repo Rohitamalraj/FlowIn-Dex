@@ -241,11 +241,11 @@ PORT=3000
 NODE_ENV=development
 FLOW_EVM_RPC_URL=https://testnet.evm.nodes.onflow.org
 FLOW_EVM_PRIVATE_KEY=your_private_key_here
-FLOW_EVM_DUEL_FACTORY=0x0991bfA42b3847675737E7478C020A98fe83198C
+FLOW_EVM_DUEL_FACTORY=0x7304CbEF75964A5fC29667e588980d7C46e84C2d
 PYTH_PRICE_SERVICE_URL=https://hermes.pyth.network
 ```
 
-**Note**: The `FLOW_EVM_DUEL_FACTORY` address above is the currently deployed factory. You can use this address to interact with existing duels, or deploy your own instance.
+**Note**: The `FLOW_EVM_DUEL_FACTORY` address above is the currently deployed factory with payout fixes (April 1, 2026). You can use this address to interact with existing duels, or deploy your own instance.
 
 #### Frontend Environment
 ```bash
@@ -256,11 +256,11 @@ cp .env.example .env.local
 Edit `frontend/.env.local`:
 ```env
 NEXT_PUBLIC_FLOW_EVM_RPC_URL=https://testnet.evm.nodes.onflow.org
-NEXT_PUBLIC_DUEL_FACTORY=0x0991bfA42b3847675737E7478C020A98fe83198C
+NEXT_PUBLIC_DUEL_FACTORY=0x7304CbEF75964A5fC29667e588980d7C46e84C2d
 NEXT_PUBLIC_CHAIN_ID=545
 ```
 
-**Note**: The `NEXT_PUBLIC_DUEL_FACTORY` address above is the currently deployed factory. You can use this address to interact with existing duels, or deploy your own instance.
+**Note**: The `NEXT_PUBLIC_DUEL_FACTORY` address above is the currently deployed factory with payout fixes (April 1, 2026). You can use this address to interact with existing duels, or deploy your own instance.
 
 ### Get Testnet Tokens
 
@@ -281,9 +281,9 @@ All contracts are deployed on **Flow EVM Testnet (Chain ID: 545)**:
 
 | Contract | Address |
 |----------|---------|
-| **DuelFactoryOnChain** | `0x0991bfA42b3847675737E7478C020A98fe83198C` |
-| **AssetRegistry** | `0xb86E760c84EEFdBcBB95FCFF58f9C8dC584d75B0` |
-| **PythConsumer** | `0xD1540731D73350e1B16Bb13EA4456926291e240F` |
+| **DuelFactoryOnChain** | `0x7304CbEF75964A5fC29667e588980d7C46e84C2d` |
+| **AssetRegistry** | `0x4Ae45bc760A2b2f838fFba4b950A6950b290587E` |
+| **PythConsumer** | `0x6A9B04365c328f5b77D49cE4BE71fd23FFEd19d3` |
 | **Pyth Oracle** | `0x2880aB155794e7179c9eE2e38200202908C17B43` |
 
 ### Contract Overview

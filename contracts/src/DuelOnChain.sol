@@ -82,6 +82,7 @@ contract DuelOnChain is Ownable {
     event StartPricesLocked(bytes32 indexed duelId);
     event EndPricesLocked(bytes32 indexed duelId);
     event DuelSettled(bytes32 indexed duelId, address indexed winner, int256 winnerReturn, int256 loserReturn);
+    event DuelSettledPrecise(bytes32 indexed duelId, address indexed winner, int256 creatorReturnPrecise, int256 opponentReturnPrecise, int256 creatorReturnBps, int256 opponentReturnBps);
     event PayoutExecuted(bytes32 indexed duelId, address indexed winner, uint256 amount);
     event DuelCancelled(bytes32 indexed duelId);
 
@@ -416,6 +417,15 @@ contract DuelOnChain is Ownable {
             creatorReturn,
             opponentReturn
         );
+        
+        emit DuelSettledPrecise(
+            config.duelId,
+            winner,
+            creatorReturnPrecise,
+            opponentReturnPrecise,
+            creatorReturn,
+            opponentReturn
+        );
     }
 
     /**
@@ -472,8 +482,10 @@ contract DuelOnChain is Ownable {
         require(winner != address(0), "DuelOnChain: no winner (tie)");
 
         uint256 payout = config.entryAmount * 2; // Both stakes
+        require(address(this).balance >= payout, "DuelOnChain: insufficient contract balance");
 
-        payable(winner).transfer(payout);
+        (bool success, ) = payable(winner).call{value: payout}("");
+        require(success, "DuelOnChain: payout transfer failed");
 
         emit PayoutExecuted(config.duelId, winner, payout);
     }
@@ -486,9 +498,13 @@ contract DuelOnChain is Ownable {
         require(winner == address(0), "DuelOnChain: not a tie");
 
         uint256 halfPayout = config.entryAmount;
+        require(address(this).balance >= halfPayout * 2, "DuelOnChain: insufficient contract balance");
 
-        payable(creatorPortfolio.participant).transfer(halfPayout);
-        payable(opponentPortfolio.participant).transfer(halfPayout);
+        (bool success1, ) = payable(creatorPortfolio.participant).call{value: halfPayout}("");
+        require(success1, "DuelOnChain: creator payout failed");
+
+        (bool success2, ) = payable(opponentPortfolio.participant).call{value: halfPayout}("");
+        require(success2, "DuelOnChain: opponent payout failed");
 
         emit PayoutExecuted(config.duelId, address(0), halfPayout * 2);
     }
@@ -569,6 +585,48 @@ contract DuelOnChain is Ownable {
      */
     function getPreciseReturns() external view returns (int256 _creatorReturnPrecise, int256 _opponentReturnPrecise) {
         return (creatorReturnPrecise, opponentReturnPrecise);
+    }
+
+    /**
+     * @notice Get contract balance and payout info
+     * @return contractBalance Current contract balance
+     * @return requiredPayout Amount needed for payout
+     * @return canPayout Whether payout is possible
+     */
+    function getPayoutInfo() external view returns (
+        uint256 contractBalance,
+        uint256 requiredPayout,
+        bool canPayout
+    ) {
+        contractBalance = address(this).balance;
+        requiredPayout = config.entryAmount * 2;
+        canPayout = contractBalance >= requiredPayout && state == DuelState.Settled && settled;
+        return (contractBalance, requiredPayout, canPayout);
+    }
+    
+    /**
+     * @notice Debug function to check settlement calculation
+     * @return Details about the settlement for debugging
+     */
+    function getSettlementDebug() external view returns (
+        int256 _creatorReturnPrecise,
+        int256 _opponentReturnPrecise,
+        int256 _creatorReturnBps,
+        int256 _opponentReturnBps,
+        address _winner,
+        bool _isCreatorWinner,
+        bool _isOpponentWinner,
+        bool _isTie
+    ) {
+        _creatorReturnPrecise = creatorReturnPrecise;
+        _opponentReturnPrecise = opponentReturnPrecise;
+        _creatorReturnBps = creatorReturn;
+        _opponentReturnBps = opponentReturn;
+        _winner = winner;
+        _isCreatorWinner = (winner == creatorPortfolio.participant);
+        _isOpponentWinner = (winner == opponentPortfolio.participant);
+        _isTie = (winner == address(0));
+        return (_creatorReturnPrecise, _opponentReturnPrecise, _creatorReturnBps, _opponentReturnBps, _winner, _isCreatorWinner, _isOpponentWinner, _isTie);
     }
 }
 

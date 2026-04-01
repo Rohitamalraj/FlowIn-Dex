@@ -756,6 +756,7 @@ export default function DuelDetailPage() {
         address: duelAddress,
         abi: DUEL_ABI,
         functionName: "executePayout",
+        gas: 100000n, // Set reasonable gas limit
       })
 
       const receipt = await publicClient.waitForTransactionReceipt({ hash, confirmations: 1 })
@@ -805,7 +806,8 @@ export default function DuelDetailPage() {
         chainId: FLOW_EVM_TESTNET_CHAIN_ID,
         address: duelAddress,
         abi: DUEL_ABI,
-        functionName: "splitTie",
+        functionName: "splitTieWinnings",
+        gas: 100000n, // Set reasonable gas limit
       })
 
       const receipt = await publicClient.waitForTransactionReceipt({ hash, confirmations: 1 })
